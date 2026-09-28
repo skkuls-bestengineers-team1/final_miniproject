@@ -1,0 +1,30 @@
+[project]
+name = "sasung-cs-chatbot"
+version = "0.1.0"
+description = "사성전자 고객상담 멀티에이전트 챗봇 스켈레톤"
+requires-python = ">=3.11"
+dependencies = [
+    "langgraph>=0.4",
+    "langchain>=0.3",
+    "langchain-core>=0.3",
+    "langgraph-checkpoint-redis>=0.1",
+    "redis>=5.0",
+    "fastapi>=0.115",
+    "uvicorn>=0.32",
+    "python-dotenv>=1.0",
+    "pydantic>=2",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

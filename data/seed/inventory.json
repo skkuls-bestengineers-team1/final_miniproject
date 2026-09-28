@@ -1,0 +1,12 @@
+[
+  {"store_id": "S001", "product_code": "PRD-6001", "quantity": 10},
+  {"store_id": "S001", "product_code": "PRD-6002", "quantity": 8},
+  {"store_id": "S002", "product_code": "PRD-6001", "quantity": 4},
+  {"store_id": "S002", "product_code": "PRD-6002", "quantity": 2},
+  {"store_id": "S003", "product_code": "PRD-6001", "quantity": 6},
+  {"store_id": "S003", "product_code": "PRD-6002", "quantity": 1},
+  {"store_id": "S004", "product_code": "PRD-6001", "quantity": 3},
+  {"store_id": "S004", "product_code": "PRD-6002", "quantity": 5},
+  {"store_id": "S005", "product_code": "PRD-6001", "quantity": 0},
+  {"store_id": "S005", "product_code": "PRD-6002", "quantity": 7}
+]

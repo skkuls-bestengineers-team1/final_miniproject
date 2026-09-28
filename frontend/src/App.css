@@ -1,0 +1,112 @@
+/* TODO(박서영): 화면 스타일을 다듬는다. */
+
+:root {
+  color: #1c1b1a;
+  background: #f4f1ea;
+  font-family: "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+}
+
+body {
+  margin: 0;
+}
+
+.page {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 32px 20px 48px;
+}
+
+.brand {
+  margin: 0;
+  letter-spacing: 0.08em;
+  font-size: 12px;
+}
+
+h1 {
+  margin: 4px 0 16px;
+  font-size: 28px;
+}
+
+label {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 14px;
+}
+
+input,
+button {
+  font: inherit;
+}
+
+header input {
+  border: 1px solid #cfc8bc;
+  border-radius: 8px;
+  padding: 6px 8px;
+  background: white;
+}
+
+.chat {
+  margin-top: 20px;
+  background: white;
+  border: 1px solid #e4ddd2;
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.log {
+  min-height: 360px;
+  max-height: 520px;
+  overflow: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.bubble {
+  max-width: 80%;
+  white-space: pre-wrap;
+  padding: 10px 12px;
+  border-radius: 12px;
+  line-height: 1.45;
+}
+
+.bubble.bot {
+  background: #f6f3ee;
+  align-self: flex-start;
+}
+
+.bubble.user {
+  background: #1f4b3a;
+  color: white;
+  align-self: flex-end;
+}
+
+.composer {
+  display: flex;
+  gap: 8px;
+  padding: 12px;
+  border-top: 1px solid #eee;
+}
+
+.composer input {
+  flex: 1;
+  border: 1px solid #cfc8bc;
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.composer button {
+  border: 0;
+  border-radius: 8px;
+  padding: 0 16px;
+  background: #1f4b3a;
+  color: white;
+  cursor: pointer;
+}
+
+.composer button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}

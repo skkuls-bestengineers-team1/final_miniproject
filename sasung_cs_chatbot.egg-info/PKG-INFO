@@ -1,0 +1,16 @@
+Metadata-Version: 2.4
+Name: sasung-cs-chatbot
+Version: 0.1.0
+Summary: 사성전자 고객상담 멀티에이전트 챗봇 스켈레톤
+Requires-Python: >=3.11
+Requires-Dist: langgraph>=0.4
+Requires-Dist: langchain>=0.3
+Requires-Dist: langchain-core>=0.3
+Requires-Dist: langgraph-checkpoint-redis>=0.1
+Requires-Dist: redis>=5.0
+Requires-Dist: fastapi>=0.115
+Requires-Dist: uvicorn>=0.32
+Requires-Dist: python-dotenv>=1.0
+Requires-Dist: pydantic>=2
+Provides-Extra: dev
+Requires-Dist: pytest>=8; extra == "dev"
