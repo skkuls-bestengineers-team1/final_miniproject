@@ -92,7 +92,7 @@ Redis나 PostgreSQL이 없으면 해당 테스트는 건너뜁니다.
 |---|---|
 | `LLM_MODEL` | `init_chat_model` 형식. 기본 `google_genai:gemini-3.7-flash` |
 | `GEMINI_API_KEY` | Gemini 키. 분쟁 기준 임베딩에도 쓴다. 없으면 문서는 들어가고 벡터는 비워 둔다 |
-| `EMBEDDING_MODEL` | 기본 `gemini-embedding-001` (768차원) |
+| `EMBEDDING_MODEL` | 기본 `gemini-embedding-2` (768차원). 분쟁 기준은 조 단위 15건으로 넣는다 |
 | `REDIS_URL` | 기본 `redis://localhost:6379` |
 | `DATABASE_URL` | 기본 `postgresql://postgres:postgres@localhost:5433/sasung_cs` |
 | `SESSION_TTL_MINUTES` | 체크포인트 TTL. 기본 30분 |

@@ -49,7 +49,7 @@ class Settings:
 
     @property
     def embedding_model(self) -> str:
-        return _env('EMBEDDING_MODEL', 'gemini-embedding-001')
+        return _env('EMBEDDING_MODEL', 'gemini-embedding-2')
 
     @property
     def default_user_id(self) -> str:

@@ -10,9 +10,9 @@ from app.db.embeddings import embed_texts
 
 def search_dispute_docs(
         query: str,
-        top_k: int = 5
+        top_k: int = 3
 ) -> dict:
-    '''질문과 가까운 조항을 거리 오름차순으로 반환한다.'''
+    '''질문과 가까운 조 전체를 거리 오름차순으로 반환한다.'''
 
     text = (query or '').strip()
 
@@ -30,6 +30,7 @@ def search_dispute_docs(
             doc_id,
             category,
             title,
+            doc_ids,
             content,
             1 - (embedding <=> %s::vector) AS score
         FROM dispute_docs

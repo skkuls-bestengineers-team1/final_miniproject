@@ -81,6 +81,7 @@ CREATE TABLE dispute_docs (
     doc_id      TEXT PRIMARY KEY,
     category    TEXT NOT NULL,
     title       TEXT NOT NULL,
+    doc_ids     TEXT[] NOT NULL,
     content     TEXT NOT NULL,
     embedding   vector(768)
 );

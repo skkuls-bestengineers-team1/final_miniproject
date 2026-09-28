@@ -1,13 +1,13 @@
 '''Gemini 임베딩.
 
 담당: 김동규
-문서·질문 벡터는 768차원(gemini-embedding-001)이다.
+문서·질문 벡터는 768차원(gemini-embedding-2)이다.
 '''
 
 from app.config import settings
 
 EMBED_DIM = 768
-BATCH_SIZE = 20
+BATCH_SIZE = 8
 
 
 def embed_texts(
@@ -38,10 +38,32 @@ def embed_texts(
                     output_dimensionality=EMBED_DIM,
                 ),
             )
-            vectors.extend(
+            batch_vectors = [
                 list(item.values)
-                for item in response.embeddings
+                for item in (response.embeddings or [])
+            ]
+
+            if len(batch_vectors) != len(batch):
+                batch_vectors = []
+
+                for text in batch:
+                    one = client.models.embed_content(
+                        model=settings.embedding_model,
+                        contents=text,
+                        config=types.EmbedContentConfig(
+                            task_type=task_type,
+                            output_dimensionality=EMBED_DIM,
+                        ),
+                    )
+                    batch_vectors.append(list(one.embeddings[0].values))
+
+            vectors.extend(batch_vectors)
+
+        if len(vectors) != len(texts):
+            print(
+                f'임베딩 개수 불일치: {len(vectors)} / {len(texts)}'
             )
+            return None
 
         return vectors
 

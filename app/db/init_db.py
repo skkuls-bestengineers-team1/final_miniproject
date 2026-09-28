@@ -66,35 +66,37 @@ def _load_csv(
 def _load_dispute_docs(
         conn
 ) -> None:
-    '''분쟁해결기준 CSV를 넣고, 키가 있으면 벡터도 채운다.'''
+    '''CSV를 조 단위로 묶어 넣고, 키가 있으면 벡터도 채운다.'''
 
-    rows = _load_csv('dispute_resolution.csv')
-    texts = [
-        f"{row.get('title', '').strip()}\n{row.get('content', '').strip()}"
-        for row in rows
-    ]
-
+    from app.db.dispute_chunks import group_articles
     from app.db.embeddings import embed_texts
 
+    articles = group_articles(_load_csv('dispute_resolution.csv'))
+    texts = [
+        f"{row['category']}\n{row['title']}\n{row['content']}"
+        for row in articles
+    ]
     vectors = embed_texts(texts, task_type='RETRIEVAL_DOCUMENT')
-
     payload = []
 
-    for index, row in enumerate(rows):
-        embedding = vectors[index] if vectors else None
+    for index, row in enumerate(articles):
+        embedding = vectors[index] if vectors and index < len(vectors) else None
         payload.append((
-            row['doc_id'].strip(),
-            row['category'].strip(),
-            row['title'].strip(),
-            row['content'].strip(),
+            row['doc_id'],
+            row['category'],
+            row['title'],
+            row['doc_ids'],
+            row['content'],
             embedding,
         ))
 
     with conn.cursor() as cursor:
         cursor.executemany(
             '''
-            INSERT INTO dispute_docs (doc_id, category, title, content, embedding)
-            VALUES (%s, %s, %s, %s, %s)
+            INSERT INTO dispute_docs (
+                doc_id, category, title, doc_ids, content, embedding
+            )
+            VALUES (%s, %s, %s, %s, %s, %s)
             ''',
             payload,
         )

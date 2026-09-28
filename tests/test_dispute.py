@@ -8,7 +8,7 @@ from app.tools.dispute_tools import search_dispute_docs
 
 def test_dispute_table_seeded(postgres_env):
     counts = init_db()
-    assert counts['dispute_docs'] >= 80
+    assert counts['dispute_docs'] == 15
 
 
 def test_dispute_vector_search(postgres_env):
@@ -23,3 +23,4 @@ def test_dispute_vector_search(postgres_env):
     assert result['items']
     titles = ' '.join(item['title'] for item in result['items'])
     assert '청약철회' in titles or '배송' in titles
+    assert 'doc_ids' in result['items'][0]

@@ -44,7 +44,7 @@ def test_seed_counts(postgres_env):
             assert table in names
             assert counts[table] == EXPECTED[table]
 
-        assert counts['dispute_docs'] >= 80
+        assert counts['dispute_docs'] == 15
 
         quantity = conn.execute(
             '''
