@@ -84,7 +84,7 @@ def test_expected_mapping_rules():
 def test_llm_classification():
     '''TODO(나송주): LLM 분류 결과와 expected_target을 비교한다.'''
 
-    if not os.getenv('OPENAI_API_KEY'):
+    if not os.getenv('GEMINI_API_KEY') and not os.getenv('GOOGLE_API_KEY'):
         pytest.skip('LLM 키가 없어 분류 테스트를 건너뜁니다.')
 
     pytest.skip('LLM 분류가 아직 연결되지 않았습니다.')

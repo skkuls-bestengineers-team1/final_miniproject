@@ -12,7 +12,7 @@ load_dotenv()
 
 def _env(
         name: str,
-        default: str
+        default: str = ''
 ) -> str:
     return os.getenv(name, default)
 
@@ -22,7 +22,11 @@ class Settings:
 
     @property
     def llm_model(self) -> str:
-        return _env('LLM_MODEL', 'openai:gpt-4o-mini')
+        return _env('LLM_MODEL', 'google_genai:gemini-3.7-flash')
+
+    @property
+    def gemini_api_key(self) -> str:
+        return _env('GEMINI_API_KEY') or _env('GOOGLE_API_KEY')
 
     @property
     def redis_url(self) -> str:

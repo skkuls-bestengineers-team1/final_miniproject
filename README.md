@@ -89,8 +89,8 @@ Redis가 없으면 GEO·그래프 테스트는 건너뛰고, DB 테스트는 통
 
 | 변수 | 의미 |
 |---|---|
-| `LLM_MODEL` | `init_chat_model` 형식. 예: `openai:gpt-4o-mini` |
-| `OPENAI_API_KEY` | LLM 분류 테스트에 필요. 없으면 해당 테스트는 skip |
+| `LLM_MODEL` | `init_chat_model` 형식. 기본 `google_genai:gemini-3.7-flash` |
+| `GEMINI_API_KEY` | Gemini 키. `GOOGLE_API_KEY`가 있으면 그 값도 쓴다. 없으면 LLM 테스트는 skip |
 | `REDIS_URL` | 기본 `redis://localhost:6379` |
 | `SQLITE_PATH` | 기본 `./data/app.db` |
 | `SESSION_TTL_MINUTES` | 체크포인트 TTL. 기본 30분 |
