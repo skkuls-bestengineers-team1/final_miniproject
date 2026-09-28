@@ -24,15 +24,19 @@ EXPECTED = {
 }
 
 
-def test_seed_counts(sqlite_env):
+def test_seed_counts(postgres_env):
     counts = init_db()
     conn = get_conn()
 
     try:
         names = {
-            row[0]
+            row['table_name']
             for row in conn.execute(
-                "SELECT name FROM sqlite_master WHERE type = 'table'"
+                '''
+                SELECT table_name
+                FROM information_schema.tables
+                WHERE table_schema = 'public'
+                '''
             )
         }
 
@@ -48,7 +52,7 @@ def test_seed_counts(sqlite_env):
             JOIN products p ON p.product_code = i.product_code
             WHERE s.name = '강남역점' AND p.product_code = 'PRD-6001'
             '''
-        ).fetchone()[0]
+        ).fetchone()['quantity']
 
         assert quantity == 10
 

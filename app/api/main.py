@@ -166,7 +166,7 @@ def list_requests(
         SELECT request_id, order_id, user_id, request_type, status,
                new_address, method, created_at
         FROM requests
-        WHERE status = ?
+        WHERE status = %s
         ORDER BY request_id
         ''',
         (status,)
@@ -235,7 +235,7 @@ def notifications(
         '''
         SELECT request_id, request_type, status
         FROM requests
-        WHERE user_id = ? AND status IN ('APPROVED', 'DONE')
+        WHERE user_id = %s AND status IN ('APPROVED', 'DONE')
         ORDER BY request_id DESC
         ''',
         (user_id,)

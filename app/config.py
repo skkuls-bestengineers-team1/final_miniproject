@@ -18,7 +18,7 @@ def _env(
 
 
 class Settings:
-    '''호출 시점에 환경변수를 읽는다. 테스트에서 SQLITE_PATH를 바꿀 수 있다.'''
+    '''호출 시점에 환경변수를 읽는다. 테스트에서 DATABASE_URL을 바꿀 수 있다.'''
 
     @property
     def llm_model(self) -> str:
@@ -33,8 +33,11 @@ class Settings:
         return _env('REDIS_URL', 'redis://localhost:6379')
 
     @property
-    def sqlite_path(self) -> str:
-        return _env('SQLITE_PATH', './data/app.db')
+    def database_url(self) -> str:
+        return _env(
+            'DATABASE_URL',
+            'postgresql://postgres:postgres@localhost:5433/sasung_cs',
+        )
 
     @property
     def session_ttl_minutes(self) -> int:

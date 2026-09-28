@@ -1,16 +1,23 @@
 '''테스트 공통.'''
 
+import psycopg
 import redis
 import pytest
 
 from app.config import settings
 
 
-@pytest.fixture
-def sqlite_env(tmp_path, monkeypatch):
-    path = tmp_path / 'app.db'
-    monkeypatch.setenv('SQLITE_PATH', str(path))
-    return path
+def postgres_up() -> bool:
+    try:
+        with psycopg.connect(
+            settings.database_url,
+            connect_timeout=1,
+        ) as conn:
+            conn.execute('SELECT 1')
+        return True
+
+    except Exception:
+        return False
 
 
 def redis_up() -> bool:
@@ -24,3 +31,9 @@ def redis_up() -> bool:
 
     except Exception:
         return False
+
+
+@pytest.fixture
+def postgres_env():
+    if not postgres_up():
+        pytest.skip('PostgreSQL이 없습니다.')

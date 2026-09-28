@@ -1,25 +1,22 @@
-'''SQLite 연결.
+'''PostgreSQL 연결.
 
 담당: 김동규
 '''
 
-import sqlite3
-from pathlib import Path
+import psycopg
+from psycopg.rows import dict_row
 
 from app.config import settings
 
 
-def get_conn() -> sqlite3.Connection:
-    '''행을 dict처럼 읽는 연결을 연다. 호출한 쪽에서 close한다.'''
+def get_conn() -> psycopg.Connection:
+    '''행을 dict로 읽는 연결을 연다. 호출한 쪽에서 close한다.'''
 
-    path = Path(settings.sqlite_path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-
-    conn = sqlite3.connect(path)
-    conn.row_factory = sqlite3.Row
-    conn.execute('PRAGMA foreign_keys = ON')
-
-    return conn
+    return psycopg.connect(
+        settings.database_url,
+        row_factory=dict_row,
+        connect_timeout=3,
+    )
 
 
 def fetch_all(
@@ -52,12 +49,22 @@ def execute(
         sql: str,
         params: tuple = ()
 ) -> int:
+    '''INSERT ... RETURNING id 가 있으면 그 값을, 없으면 0을 반환한다.'''
+
     conn = get_conn()
 
     try:
         cursor = conn.execute(sql, params)
         conn.commit()
-        return int(cursor.lastrowid or 0)
+
+        if cursor.description:
+            row = cursor.fetchone()
+
+            if row:
+                first = next(iter(row.values()))
+                return int(first)
+
+        return 0
 
     finally:
         conn.close()

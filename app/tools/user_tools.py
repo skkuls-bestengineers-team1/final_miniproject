@@ -15,7 +15,7 @@ def get_user(
         '''
         SELECT user_id, name, phone, address, lat, lng
         FROM users
-        WHERE user_id = ?
+        WHERE user_id = %s
         ''',
         (user_id,)
     )

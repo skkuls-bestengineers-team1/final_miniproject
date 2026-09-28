@@ -28,7 +28,7 @@ def get_orders(
         user_id: str
 ) -> dict:
     rows = fetch_all(
-        _ORDER_SQL + ' WHERE o.user_id = ? ORDER BY o.order_date DESC',
+        _ORDER_SQL + ' WHERE o.user_id = %s ORDER BY o.order_date DESC',
         (user_id,)
     )
 
@@ -45,7 +45,7 @@ def get_order(
     '''주문 상세. 다른 사용자 주문이면 NOT_OWNER.'''
 
     row = fetch_one(
-        _ORDER_SQL + ' WHERE o.order_id = ?',
+        _ORDER_SQL + ' WHERE o.order_id = %s',
         (order_id,)
     )
 

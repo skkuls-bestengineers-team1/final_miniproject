@@ -37,8 +37,8 @@ def request_address_change(
         '''
         SELECT request_id, status
         FROM requests
-        WHERE order_id = ?
-          AND user_id = ?
+        WHERE order_id = %s
+          AND user_id = %s
           AND request_type = 'ADDRESS_CHANGE'
           AND status = 'PENDING'
         ORDER BY request_id DESC
@@ -59,7 +59,8 @@ def request_address_change(
         INSERT INTO requests (
             order_id, user_id, request_type, new_address, status
         )
-        VALUES (?, ?, 'ADDRESS_CHANGE', ?, 'PENDING')
+        VALUES (%s, %s, 'ADDRESS_CHANGE', %s, 'PENDING')
+        RETURNING request_id
         ''',
         (order_id, user_id, new_address.strip())
     )
@@ -117,7 +118,8 @@ def _create_return_request(
             order_id, user_id, request_type, method,
             pickup_address, reason, status
         )
-        VALUES (?, ?, ?, ?, ?, ?, 'PENDING')
+        VALUES (%s, %s, %s, %s, %s, %s, 'PENDING')
+        RETURNING request_id
         ''',
         (order_id, user_id, request_type, method, pickup_address, reason)
     )
@@ -175,7 +177,7 @@ def mark_request_status(
         '''
         SELECT request_id, order_id, user_id, request_type, new_address, status
         FROM requests
-        WHERE request_id = ?
+        WHERE request_id = %s
         ''',
         (request_id,)
     )
@@ -184,13 +186,13 @@ def mark_request_status(
         return fail('REQUEST_NOT_FOUND', '요청을 찾지 못했습니다.')
 
     execute(
-        'UPDATE requests SET status = ? WHERE request_id = ?',
+        'UPDATE requests SET status = %s WHERE request_id = %s',
         (status, request_id)
     )
 
     if status in {'APPROVED', 'DONE'} and row['request_type'] == 'ADDRESS_CHANGE' and row['new_address']:
         execute(
-            'UPDATE orders SET ship_address = ? WHERE order_id = ?',
+            'UPDATE orders SET ship_address = %s WHERE order_id = %s',
             (row['new_address'], row['order_id'])
         )
 

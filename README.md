@@ -40,14 +40,14 @@ UC3에서 새 주소를 받으면 `interrupt()`로 그래프가 멈추고, 관�
 | `app/graph/confirm.py` | "아래 정보가 맞습니까?" |
 | `app/workers/` | UC1~UC6 |
 | `app/tools/` | 사용자, 지점, 재고, 주문, 요청, 문의 |
-| `app/db/` | SQLite 스키마, seed, 코드 한글명 |
+| `app/db/` | PostgreSQL 스키마, seed, 코드 한글명 |
 | `app/redis_store/` | GEO, RedisSaver |
 | `app/api/` | `POST /chat`, 관리자 승인, 알림 |
 | `scripts/admin_approve.py` | 대기 요청 승인 CLI |
 | `frontend/` | 채팅 화면 |
 | `data/seed/` | Mock JSON |
 | `data/inquiries_testset.csv` | 분류 규칙 확인용 샘플 |
-| `tests/` | DB, GEO, 그래프, 분류 매핑 |
+| `requirements.txt` | Python 패키지 |
 
 ## 실행
 
@@ -56,7 +56,7 @@ Python 3.11 이상이 필요합니다.
 ```bash
 python3.12 -m venv .venv
 source .venv/bin/activate
-pip install -e ".[dev]"
+pip install -r requirements.txt
 
 docker compose up -d
 python -m app.db.init_db
@@ -67,7 +67,7 @@ npm install
 npm run dev
 ```
 
-화면은 `http://localhost:5173`, API는 `http://localhost:8000`, RedisInsight는 `http://localhost:8001` 입니다.
+화면은 `http://localhost:5173`, API는 `http://localhost:8000`, RedisInsight는 `http://localhost:8001` 입니다. PostgreSQL은 로컬 5432와 겹치지 않게 호스트 `5433`으로 엽니다.
 
 ```bash
 curl -s -X POST http://localhost:8000/chat \
@@ -81,7 +81,7 @@ curl -s -X POST http://localhost:8000/chat \
 pytest
 ```
 
-Redis가 없으면 GEO·그래프 테스트는 건너뛰고, DB 테스트는 통과해야 합니다.
+Redis나 PostgreSQL이 없으면 해당 테스트는 건너뜁니다.
 
 ## 환경 변수
 
@@ -92,7 +92,7 @@ Redis가 없으면 GEO·그래프 테스트는 건너뛰고, DB 테스트는 통
 | `LLM_MODEL` | `init_chat_model` 형식. 기본 `google_genai:gemini-3.7-flash` |
 | `GEMINI_API_KEY` | Gemini 키. `GOOGLE_API_KEY`가 있으면 그 값도 쓴다. 없으면 LLM 테스트는 skip |
 | `REDIS_URL` | 기본 `redis://localhost:6379` |
-| `SQLITE_PATH` | 기본 `./data/app.db` |
+| `DATABASE_URL` | 기본 `postgresql://postgres:postgres@localhost:5433/sasung_cs` |
 | `SESSION_TTL_MINUTES` | 체크포인트 TTL. 기본 30분 |
 | `MAX_VALIDATION_RETRY` | 검증 재작성 횟수. 기본 2 |
 | `DEFAULT_USER_ID` | 기본 `U001` |

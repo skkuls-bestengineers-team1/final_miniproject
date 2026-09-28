@@ -15,7 +15,7 @@ def save_inquiry(
         priority_level: int | None = None
 ) -> dict:
     user = fetch_one(
-        'SELECT user_id FROM users WHERE user_id = ?',
+        'SELECT user_id FROM users WHERE user_id = %s',
         (user_id,)
     )
 
@@ -24,7 +24,7 @@ def save_inquiry(
 
     if product_code:
         product = fetch_one(
-            'SELECT product_code FROM products WHERE product_code = ?',
+            'SELECT product_code FROM products WHERE product_code = %s',
             (product_code,)
         )
 
@@ -37,7 +37,8 @@ def save_inquiry(
             user_id, product_code, inquiry_type_code, inquiry_text,
             handled_by, priority_level, answer_status_code
         )
-        VALUES (?, ?, ?, ?, ?, ?, 'WAITING')
+        VALUES (%s, %s, %s, %s, %s, %s, 'WAITING')
+        RETURNING inquiry_id
         ''',
         (
             user_id,

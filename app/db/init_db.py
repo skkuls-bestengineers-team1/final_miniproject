@@ -14,16 +14,6 @@ ROOT = Path(__file__).resolve().parents[2]
 SEED_DIR = ROOT / 'data' / 'seed'
 SCHEMA_PATH = Path(__file__).resolve().parent / 'schema.sql'
 
-CLEAR_SQL = [
-    'DELETE FROM inquiries',
-    'DELETE FROM requests',
-    'DELETE FROM orders',
-    'DELETE FROM inventory',
-    'DELETE FROM products',
-    'DELETE FROM stores',
-    'DELETE FROM users',
-]
-
 
 def _load_json(
         name: str
@@ -32,6 +22,20 @@ def _load_json(
 
     with path.open(encoding='utf-8') as file:
         return json.load(file)
+
+
+def _run_schema(
+        conn
+) -> None:
+    script = SCHEMA_PATH.read_text(encoding='utf-8')
+    statements = [
+        statement.strip()
+        for statement in script.split(';')
+        if statement.strip()
+    ]
+
+    for statement in statements:
+        conn.execute(statement)
 
 
 def _insert_rows(
@@ -45,27 +49,23 @@ def _insert_rows(
         for row in rows
     ]
 
-    conn.executemany(sql, values)
+    with conn.cursor() as cursor:
+        cursor.executemany(sql, values)
 
 
 def init_db() -> dict:
-    '''스키마를 만들고 seed를 다시 넣는다. Redis가 있으면 지점 좌표를 적재한다.'''
+    '''스키마를 다시 만들고 seed를 넣는다. Redis가 있으면 지점 좌표를 적재한다.'''
 
     conn = get_conn()
 
     try:
-        schema = SCHEMA_PATH.read_text(encoding='utf-8')
-        conn.executescript(schema)
-        conn.execute('PRAGMA foreign_keys = ON')
-
-        for statement in CLEAR_SQL:
-            conn.execute(statement)
+        _run_schema(conn)
 
         _insert_rows(
             conn,
             '''
             INSERT INTO users (user_id, name, phone, address, lat, lng)
-            VALUES (?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s)
             ''',
             _load_json('users.json'),
             ['user_id', 'name', 'phone', 'address', 'lat', 'lng']
@@ -75,7 +75,7 @@ def init_db() -> dict:
             conn,
             '''
             INSERT INTO stores (store_id, name, address, lat, lng)
-            VALUES (?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s)
             ''',
             _load_json('stores.json'),
             ['store_id', 'name', 'address', 'lat', 'lng']
@@ -85,7 +85,7 @@ def init_db() -> dict:
             conn,
             '''
             INSERT INTO products (product_code, product_name, category_code, price)
-            VALUES (?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s)
             ''',
             _load_json('products.json'),
             ['product_code', 'product_name', 'category_code', 'price']
@@ -95,7 +95,7 @@ def init_db() -> dict:
             conn,
             '''
             INSERT INTO inventory (store_id, product_code, quantity)
-            VALUES (?, ?, ?)
+            VALUES (%s, %s, %s)
             ''',
             _load_json('inventory.json'),
             ['store_id', 'product_code', 'quantity']
@@ -108,7 +108,7 @@ def init_db() -> dict:
                 order_id, user_id, product_code, option, order_date,
                 delivery_status, expected_date, delivered_date, ship_address
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             ''',
             _load_json('orders.json'),
             [
@@ -120,7 +120,9 @@ def init_db() -> dict:
         conn.commit()
 
         counts = {
-            table: conn.execute(f'SELECT COUNT(*) FROM {table}').fetchone()[0]
+            table: conn.execute(
+                f'SELECT COUNT(*) AS n FROM {table}'
+            ).fetchone()['n']
             for table in (
                 'users', 'stores', 'products', 'inventory', 'orders', 'requests', 'inquiries'
             )
@@ -135,7 +137,7 @@ def init_db() -> dict:
 
 
 def _load_geo() -> int:
-    '''Redis가 꺼져 있으면 0을 반환하고 SQLite 초기화는 성공으로 둔다.'''
+    '''Redis가 꺼져 있으면 0을 반환하고 PostgreSQL 초기화는 성공으로 둔다.'''
 
     try:
         from app.redis_store.client import get_redis
@@ -159,7 +161,7 @@ def _load_geo() -> int:
 def main() -> None:
     counts = init_db()
 
-    print('SQLite 초기화 완료')
+    print('PostgreSQL 초기화 완료')
 
     for name, count in counts.items():
         print(f'- {name}: {count}')

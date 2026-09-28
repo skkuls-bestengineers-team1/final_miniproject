@@ -9,7 +9,7 @@ from app.redis_store.geo import search_nearest
 from tests.conftest import redis_up
 
 
-def test_nearest_three_sorted(sqlite_env):
+def test_nearest_three_sorted(postgres_env):
     if not redis_up():
         pytest.skip('Redis가 없습니다.')
 
@@ -18,7 +18,7 @@ def test_nearest_three_sorted(sqlite_env):
 
     try:
         user = conn.execute(
-            'SELECT lat, lng FROM users WHERE user_id = ?',
+            'SELECT lat, lng FROM users WHERE user_id = %s',
             ('U001',)
         ).fetchone()
 

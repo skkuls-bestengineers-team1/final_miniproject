@@ -21,7 +21,7 @@ def test_keyword_routes():
     assert classify_keyword('결제가 두 번 되었습니다') == 'fallback'
 
 
-def test_stock_invoke(sqlite_env):
+def test_stock_invoke(postgres_env):
     if not redis_up():
         pytest.skip('Redis가 없습니다.')
 

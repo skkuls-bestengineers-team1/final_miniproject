@@ -13,7 +13,7 @@ def _find_store(
         '''
         SELECT store_id, name, address
         FROM stores
-        WHERE name = ? OR name LIKE ?
+        WHERE name = %s OR name LIKE %s
         ''',
         (store_name, f'%{store_name}%')
     )
@@ -51,7 +51,7 @@ def get_stock(
             '''
             SELECT product_code, product_name
             FROM products
-            WHERE product_name = ?
+            WHERE product_name = %s
             ''',
             (product_name,)
         )
@@ -63,16 +63,16 @@ def get_stock(
         SELECT p.product_code, p.product_name, p.category_code, i.quantity
         FROM inventory i
         JOIN products p ON p.product_code = i.product_code
-        WHERE i.store_id = ?
+        WHERE i.store_id = %s
     '''
     params: list = [store['store_id']]
 
     if product_name:
-        sql += ' AND p.product_name = ?'
+        sql += ' AND p.product_name = %s'
         params.append(product_name)
 
     elif category_code:
-        sql += ' AND p.category_code = ?'
+        sql += ' AND p.category_code = %s'
         params.append(category_code)
 
     sql += ' ORDER BY p.product_name'
