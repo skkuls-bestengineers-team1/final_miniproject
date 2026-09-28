@@ -48,6 +48,10 @@ class Settings:
         return int(_env('MAX_VALIDATION_RETRY', '2'))
 
     @property
+    def embedding_model(self) -> str:
+        return _env('EMBEDDING_MODEL', 'gemini-embedding-001')
+
+    @property
     def default_user_id(self) -> str:
         return _env('DEFAULT_USER_ID', 'U001')
 

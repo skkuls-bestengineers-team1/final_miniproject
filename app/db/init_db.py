@@ -5,6 +5,7 @@
 실행: python -m app.db.init_db
 '''
 
+import csv
 import json
 from pathlib import Path
 
@@ -53,12 +54,67 @@ def _insert_rows(
         cursor.executemany(sql, values)
 
 
+def _load_csv(
+        name: str
+) -> list[dict]:
+    path = SEED_DIR / name
+
+    with path.open(encoding='utf-8-sig', newline='') as file:
+        return list(csv.DictReader(file))
+
+
+def _load_dispute_docs(
+        conn
+) -> None:
+    '''분쟁해결기준 CSV를 넣고, 키가 있으면 벡터도 채운다.'''
+
+    rows = _load_csv('dispute_resolution.csv')
+    texts = [
+        f"{row.get('title', '').strip()}\n{row.get('content', '').strip()}"
+        for row in rows
+    ]
+
+    from app.db.embeddings import embed_texts
+
+    vectors = embed_texts(texts, task_type='RETRIEVAL_DOCUMENT')
+
+    payload = []
+
+    for index, row in enumerate(rows):
+        embedding = vectors[index] if vectors else None
+        payload.append((
+            row['doc_id'].strip(),
+            row['category'].strip(),
+            row['title'].strip(),
+            row['content'].strip(),
+            embedding,
+        ))
+
+    with conn.cursor() as cursor:
+        cursor.executemany(
+            '''
+            INSERT INTO dispute_docs (doc_id, category, title, content, embedding)
+            VALUES (%s, %s, %s, %s, %s)
+            ''',
+            payload,
+        )
+
+
 def init_db() -> dict:
     '''스키마를 다시 만들고 seed를 넣는다. Redis가 있으면 지점 좌표를 적재한다.'''
 
     conn = get_conn()
 
     try:
+        conn.execute('CREATE EXTENSION IF NOT EXISTS vector')
+
+        try:
+            from pgvector.psycopg import register_vector
+            register_vector(conn)
+
+        except Exception:
+            pass
+
         _run_schema(conn)
 
         _insert_rows(
@@ -117,6 +173,8 @@ def init_db() -> dict:
             ]
         )
 
+        _load_dispute_docs(conn)
+
         conn.commit()
 
         counts = {
@@ -124,9 +182,19 @@ def init_db() -> dict:
                 f'SELECT COUNT(*) AS n FROM {table}'
             ).fetchone()['n']
             for table in (
-                'users', 'stores', 'products', 'inventory', 'orders', 'requests', 'inquiries'
+                'users', 'stores', 'products', 'inventory',
+                'orders', 'requests', 'inquiries', 'dispute_docs'
             )
         }
+
+        embedded = conn.execute(
+            '''
+            SELECT COUNT(*) AS n
+            FROM dispute_docs
+            WHERE embedding IS NOT NULL
+            '''
+        ).fetchone()['n']
+        counts['dispute_embeddings'] = embedded
 
     finally:
         conn.close()

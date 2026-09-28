@@ -12,11 +12,20 @@ from app.config import settings
 def get_conn() -> psycopg.Connection:
     '''행을 dict로 읽는 연결을 연다. 호출한 쪽에서 close한다.'''
 
-    return psycopg.connect(
+    conn = psycopg.connect(
         settings.database_url,
         row_factory=dict_row,
         connect_timeout=3,
     )
+
+    try:
+        from pgvector.psycopg import register_vector
+        register_vector(conn)
+
+    except Exception:
+        pass
+
+    return conn
 
 
 def fetch_all(

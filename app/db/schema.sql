@@ -5,6 +5,9 @@ DROP TABLE IF EXISTS inventory CASCADE;
 DROP TABLE IF EXISTS products CASCADE;
 DROP TABLE IF EXISTS stores CASCADE;
 DROP TABLE IF EXISTS users CASCADE;
+DROP TABLE IF EXISTS dispute_docs CASCADE;
+
+CREATE EXTENSION IF NOT EXISTS vector;
 
 CREATE TABLE users (
     user_id     TEXT PRIMARY KEY,
@@ -73,3 +76,15 @@ CREATE TABLE inquiries (
     answer_status_code  TEXT NOT NULL DEFAULT 'WAITING' CHECK (answer_status_code IN ('WAITING','IN_PROGRESS','ANSWERED')),
     created_at          TEXT NOT NULL DEFAULT TO_CHAR(NOW(), 'YYYY-MM-DD HH24:MI:SS')
 );
+
+CREATE TABLE dispute_docs (
+    doc_id      TEXT PRIMARY KEY,
+    category    TEXT NOT NULL,
+    title       TEXT NOT NULL,
+    content     TEXT NOT NULL,
+    embedding   vector(768)
+);
+
+CREATE INDEX IF NOT EXISTS dispute_docs_embedding_idx
+ON dispute_docs
+USING hnsw (embedding vector_cosine_ops);

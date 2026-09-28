@@ -9,4 +9,5 @@ uvicorn>=0.32
 python-dotenv>=1.0
 pydantic>=2
 psycopg[binary]>=3.2
+pgvector>=0.3
 pytest>=8

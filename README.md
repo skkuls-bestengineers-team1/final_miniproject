@@ -45,7 +45,8 @@ UC3에서 새 주소를 받으면 `interrupt()`로 그래프가 멈추고, 관�
 | `app/api/` | `POST /chat`, 관리자 승인, 알림 |
 | `scripts/admin_approve.py` | 대기 요청 승인 CLI |
 | `frontend/` | 채팅 화면 |
-| `data/seed/` | Mock JSON |
+| `data/seed/` | Mock JSON, 분쟁해결기준 CSV |
+| `app/tools/dispute_tools.py` | 분쟁 기준 벡터 검색 |
 | `data/inquiries_testset.csv` | 분류 규칙 확인용 샘플 |
 | `requirements.txt` | Python 패키지 |
 
@@ -90,7 +91,8 @@ Redis나 PostgreSQL이 없으면 해당 테스트는 건너뜁니다.
 | 변수 | 의미 |
 |---|---|
 | `LLM_MODEL` | `init_chat_model` 형식. 기본 `google_genai:gemini-3.7-flash` |
-| `GEMINI_API_KEY` | Gemini 키. `GOOGLE_API_KEY`가 있으면 그 값도 쓴다. 없으면 LLM 테스트는 skip |
+| `GEMINI_API_KEY` | Gemini 키. 분쟁 기준 임베딩에도 쓴다. 없으면 문서는 들어가고 벡터는 비워 둔다 |
+| `EMBEDDING_MODEL` | 기본 `gemini-embedding-001` (768차원) |
 | `REDIS_URL` | 기본 `redis://localhost:6379` |
 | `DATABASE_URL` | 기본 `postgresql://postgres:postgres@localhost:5433/sasung_cs` |
 | `SESSION_TTL_MINUTES` | 체크포인트 TTL. 기본 30분 |
