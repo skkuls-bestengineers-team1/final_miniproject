@@ -3,7 +3,7 @@ export type ChatResponse = {
   waiting_approval: boolean
 }
 
-const API_BASE = 'http://localhost:8000'
+const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8000'
 
 export async function sendMessage(userId: string, message: string): Promise<ChatResponse> {
   const response = await fetch(`${API_BASE}/chat`, {
@@ -26,7 +26,6 @@ export async function sendMessage(userId: string, message: string): Promise<Chat
   return response.json()
 }
 
-// TODO(박서영): 5초 간격으로 GET /notifications/{userId} 를 폴링한다.
 export async function fetchNotifications(userId: string) {
   const response = await fetch(`${API_BASE}/notifications/${userId}`)
 

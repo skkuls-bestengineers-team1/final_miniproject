@@ -5,5 +5,10 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
+    proxy: {
+      '/chat': 'http://127.0.0.1:8000',
+      '/notifications': 'http://127.0.0.1:8000',
+      '/admin': 'http://127.0.0.1:8000',
+    },
   },
 })
