@@ -1,11 +1,27 @@
 export type ChatResponse = {
   answer: string
   waiting_approval: boolean
+  ask_search_origin?: boolean
+}
+
+// 가까운 지점 검색 기준점. 주문·배송 주소와는 별개다.
+export type Position = {
+  lat: number
+  lng: number
+}
+
+export type SendOptions = {
+  currentPosition?: Position
+  useRegisteredAddress?: boolean
 }
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8000'
 
-export async function sendMessage(userId: string, message: string): Promise<ChatResponse> {
+export async function sendMessage(
+  userId: string,
+  message: string,
+  options: SendOptions = {},
+): Promise<ChatResponse> {
   const response = await fetch(`${API_BASE}/chat`, {
     method: 'POST',
     headers: {
@@ -15,6 +31,8 @@ export async function sendMessage(userId: string, message: string): Promise<Chat
     body: JSON.stringify({
       user_id: userId,
       message,
+      current_position: options.currentPosition ?? null,
+      use_registered_address: options.useRegisteredAddress ?? false,
     }),
   })
 

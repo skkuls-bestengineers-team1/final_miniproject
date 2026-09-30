@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useRef, useState } from 'react'
-import { sendMessage } from '../api'
+import { Position, SendOptions, sendMessage } from '../api'
 import { BotMark } from './BotMark'
 import { ChatMessage, MessageBubble } from './MessageBubble'
 
@@ -21,6 +21,27 @@ export const QUICK_PROMPTS = [
 
 const GREETING = '안녕하세요. 사성전자 고객상담입니다. 가까운 지점, 재고, 배송, 교환·환불 모두 도와드릴게요.'
 
+const ADDRESS_PLACEHOLDER = '역이나 동 이름을 입력해 주세요. (예: 용산역)'
+
+// 브라우저 현재 위치. 권한 거부·시간 초과·미지원이면 null.
+function currentPosition(): Promise<Position | null> {
+  return new Promise((resolve) => {
+    if (!('geolocation' in navigator)) {
+      resolve(null)
+      return
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => resolve({
+        lat: position.coords.latitude,
+        lng: position.coords.longitude,
+      }),
+      () => resolve(null),
+      { timeout: 10000, maximumAge: 5 * 60 * 1000 },
+    )
+  })
+}
+
 function clock() {
   return new Date().toLocaleTimeString('ko-KR', {
     hour: '2-digit',
@@ -40,6 +61,9 @@ export function ChatWindow({
   const [draft, setDraft] = useState('')
   const [sending, setSending] = useState(false)
   const [waitingApproval, setWaitingApproval] = useState(false)
+  const [askOrigin, setAskOrigin] = useState(false)
+  const [addressMode, setAddressMode] = useState(false)
+  const [locating, setLocating] = useState(false)
   const logRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const sendingRef = useRef(false)
@@ -49,6 +73,9 @@ export function ChatWindow({
     setMessages([])
     setDraft('')
     setWaitingApproval(false)
+    setAskOrigin(false)
+    setAddressMode(false)
+    setLocating(false)
     sendingRef.current = false
     setSending(false)
   }, [userId])
@@ -70,7 +97,7 @@ export function ChatWindow({
     onSeedConsumed?.()
   }, [seedPrompt])
 
-  async function ask(text: string) {
+  async function ask(text: string, options: SendOptions = {}) {
     const trimmed = text.trim()
 
     if (!trimmed || sendingRef.current) {
@@ -82,14 +109,17 @@ export function ChatWindow({
     setActive(true)
     setDraft('')
     setSending(true)
+    setAskOrigin(false)
+    setAddressMode(false)
     setMessages((current) => {
       const next = started ? current : [{ role: 'bot', text: GREETING, time: clock() } as ChatMessage]
       return [...next, { role: 'user', text: trimmed, time: clock() }]
     })
 
     try {
-      const result = await sendMessage(userId, trimmed)
+      const result = await sendMessage(userId, trimmed, options)
       setWaitingApproval(Boolean(result.waiting_approval))
+      setAskOrigin(Boolean(result.ask_search_origin))
       const suffix = result.waiting_approval ? '\n\n관리자 승인을 기다리고 있습니다.' : ''
 
       setMessages((current) => [
@@ -114,11 +144,42 @@ export function ChatWindow({
     void ask(draft)
   }
 
+  // 기준 위치 선택: 현재 위치. 권한을 거부하거나 실패하면 등록 주소로 대신한다.
+  async function pickCurrentPosition() {
+    if (sendingRef.current || locating) {
+      return
+    }
+
+    setLocating(true)
+    const position = await currentPosition()
+    setLocating(false)
+
+    if (position) {
+      void ask('현재 위치 사용', { currentPosition: position })
+      return
+    }
+
+    void ask('현재 위치를 가져오지 못해 등록 주소로 찾아 주세요', { useRegisteredAddress: true })
+  }
+
+  // 기준 위치 선택: 주소 입력. 입력한 문장은 일반 메시지로 보내고 서버가 주소로 해석한다.
+  function startAddressInput() {
+    setAddressMode(true)
+    inputRef.current?.focus()
+  }
+
+  function pickRegisteredAddress() {
+    void ask('등록 주소 사용', { useRegisteredAddress: true })
+  }
+
   function resetChat() {
     setActive(false)
     setMessages([])
     setDraft('')
     setWaitingApproval(false)
+    setAskOrigin(false)
+    setAddressMode(false)
+    setLocating(false)
     sendingRef.current = false
     setSending(false)
   }
@@ -187,20 +248,43 @@ export function ChatWindow({
       {waitingApproval ? (
         <p className="notice">배송지 변경은 관리자 승인 후 이어집니다.</p>
       ) : null}
+      {askOrigin && !sending ? (
+        <div className="origin-pick" role="group" aria-label="기준 위치 선택">
+          <button type="button" onClick={() => void pickCurrentPosition()} disabled={locating}>
+            {locating ? '위치 확인 중…' : '현재 위치 사용'}
+          </button>
+          <button
+            type="button"
+            onClick={startAddressInput}
+            className={addressMode ? 'selected' : undefined}
+            aria-pressed={addressMode}
+          >
+            주소 입력
+          </button>
+          <button type="button" onClick={pickRegisteredAddress} disabled={locating}>
+            등록 주소로
+          </button>
+        </div>
+      ) : null}
       <form className="pill-form dock" onSubmit={onSubmit}>
         <input
           ref={inputRef}
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
-          placeholder="메시지를 입력해 주세요."
+          placeholder={askOrigin && addressMode ? ADDRESS_PLACEHOLDER : '메시지를 입력해 주세요.'}
           aria-label="문의 입력"
-          disabled={sending}
+          disabled={sending || locating}
         />
-        <button type="submit" disabled={sending || !draft.trim()} aria-label="전송">
+        <button type="submit" disabled={sending || locating || !draft.trim()} aria-label="전송">
           <SendIcon />
         </button>
       </form>
-      <p className="disclaimer">AI가 만든 답변은 부정확할 수 있습니다.</p>
+      <p className="disclaimer">
+        AI가 만든 답변은 부정확할 수 있습니다. · 위치 검색{' '}
+        <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">
+          © OpenStreetMap contributors
+        </a>
+      </p>
     </section>
   )
 }

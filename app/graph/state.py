@@ -21,6 +21,8 @@ class State(TypedDict):
     tool_results: list[dict]
     retry_count: int
     validation: dict | None
+    search_origin: dict | None   # 지점 검색 기준점 {lat, lng, source, label, at}. 주문·배송 주소와 별개
+    search_origin_asked: bool    # 이번 세션에서 기준점을 이미 물었는지
 
 
 def initial_state(
@@ -39,4 +41,6 @@ def initial_state(
         'tool_results': [],
         'retry_count': 0,
         'validation': None,
+        'search_origin': None,
+        'search_origin_asked': False,
     }

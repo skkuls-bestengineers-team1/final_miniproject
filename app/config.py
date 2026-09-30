@@ -52,6 +52,14 @@ class Settings:
         return _env('EMBEDDING_MODEL', 'gemini-embedding-2')
 
     @property
+    def nominatim_user_agent(self) -> str:
+        '''Nominatim 정책상 앱을 식별하는 User-Agent가 필요하다.'''
+        return _env(
+            'NOMINATIM_USER_AGENT',
+            'sasung-cs-chatbot/0.1 (github.com/skkuls-bestengineers-team1/final_miniproject)',
+        )
+
+    @property
     def default_user_id(self) -> str:
         return _env('DEFAULT_USER_ID', 'U001')
 

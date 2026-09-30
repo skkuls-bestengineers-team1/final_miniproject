@@ -11,21 +11,32 @@ from app.db.connection import fail
 
 def find_nearest_stores(
         user_id: str,
-        top_k: int = 3
+        top_k: int = 3,
+        origin: dict | None = None
 ) -> dict:
-    '''사용자 좌표 기준 가까운 지점. 결과가 없으면 EMPTY_RESULT.'''
+    '''검색 기준점(search_origin) 근처 지점. origin이 없으면 등록 주소 기준. 결과가 없으면 EMPTY_RESULT.'''
 
-    address = get_user_address(user_id)
+    if origin:
+        lat, lng = origin['lat'], origin['lng']
+        basis = origin.get('source', 'registered')
+        label = origin.get('label', '')
 
-    if not address.get('ok'):
-        return address
+    else:
+        address = get_user_address(user_id)
+
+        if not address.get('ok'):
+            return address
+
+        lat, lng = address['lat'], address['lng']
+        basis = 'registered'
+        label = '등록 주소'
 
     try:
         client = get_redis()
         stores = search_nearest(
             client,
-            lng=float(address['lng']),
-            lat=float(address['lat']),
+            lng=float(lng),
+            lat=float(lat),
             count=top_k,
         )
 
@@ -38,4 +49,6 @@ def find_nearest_stores(
     return {
         'ok': True,
         'stores': stores,
+        'basis': basis,
+        'label': label,
     }
