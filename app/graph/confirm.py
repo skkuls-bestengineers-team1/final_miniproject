@@ -1,16 +1,32 @@
 '''확인 질문과 긍정·부정 판별.
 
 담당: 박종석
-
-냅둘 것: finished, waiting, latest_user_text, validation_retry_update 시그니처.
-         worker3·4가 같이 씀. 답을 messages에 넣지 말 것.
-다시 쓸 것: parse_yes_no (네/아니 키워드), 확인 문장 톤.
-         validation_retry_update 안의 "[검증 반영]" 붙이기는 임시.
+worker3·4가 같이 쓴다. 답을 messages에 넣지 않는다.
+LLM은 get_llm() (Gemini). 실패하면 키워드로 판별한다.
 '''
 
+import re
 from typing import Literal
 
+from pydantic import BaseModel, Field
+
 from app.graph.state import State
+from app.llm import get_llm
+
+NO_WORDS = (
+    '아니', '아뇨', '아니요', '아닙니다', '틀렸', '틀려', '틀림',
+    '싫', '아님', '노', 'no', 'ㄴㄴ',
+)
+YES_WORDS = (
+    '네', '예', '응', '맞', '맞아', '맞아요', '맞습니다',
+    '좋아', '좋아요', '그래', 'ok', 'okay', 'yes', 'ㅇㅇ', 'ㅇㅋ',
+)
+
+
+class YesNoVerdict(BaseModel):
+    answer: Literal['yes', 'no', 'unknown'] = Field(
+        description='짧은 확인 답. yes / no / unknown'
+    )
 
 
 def build_confirm_message(
@@ -23,33 +39,63 @@ def build_confirm_message(
         lines.append(f'{label}: {value}')
 
     lines.append('')
-    lines.append('아래 정보가 맞습니까?')
+    lines.append('위 내용이 맞는지 확인해 주세요.')
 
     return '\n'.join(lines)
+
+
+def _normalize(
+        user_text: str
+) -> str:
+    return re.sub(r'[^\w\s]', '', (user_text or '').strip().lower())
+
+
+def _keyword_yes_no(
+        text: str
+) -> Literal['yes', 'no', 'unknown']:
+    if not text:
+        return 'unknown'
+
+    tokens = text.split()
+    first = tokens[0] if tokens else ''
+
+    if any(first.startswith(word) or word in tokens for word in NO_WORDS):
+        return 'no'
+
+    if any(first.startswith(word) or word in tokens for word in YES_WORDS):
+        return 'yes'
+
+    return 'unknown'
 
 
 def parse_yes_no(
         user_text: str
 ) -> Literal['yes', 'no', 'unknown']:
-    '''짧은 답의 임시 판별.'''
+    '''짧은 답을 yes / no / unknown으로 돌린다. worker3도 같은 반환값을 쓴다.'''
 
-    # 다시 쓰기: LLM이 yes | no | unknown. 반환 세 값은 유지 (worker3도 사용).
-
-    text = user_text.strip()
+    text = _normalize(user_text)
 
     if not text:
         return 'unknown'
 
-    no_words = ('아니', '아뇨', '아니요', '싫', '틀렸')
-    yes_words = ('네', '예', '응', '맞', '좋아', '그래')
+    try:
+        verdict = get_llm().with_structured_output(YesNoVerdict).invoke(
+            '사용자가 확인 질문에 긍정하면 yes, 부정하면 no, '
+            '확인이 아니면 unknown. 한 값만.\n'
+            f'발화: {user_text}'
+        )
+        answer = getattr(verdict, 'answer', None)
 
-    if text.startswith(no_words):
-        return 'no'
+        if isinstance(verdict, dict):
+            answer = verdict.get('answer')
 
-    if text.startswith(yes_words):
-        return 'yes'
+        if answer in {'yes', 'no', 'unknown'}:
+            return answer
 
-    return 'unknown'
+    except Exception:
+        pass
+
+    return _keyword_yes_no(text)
 
 
 def latest_user_text(
@@ -98,7 +144,7 @@ def validation_retry_update(
     draft = state.get('draft_answer') or ''
 
     return {
-        'draft_answer': f'{draft}\n\n[검증 반영] {reason}'.strip(),
+        'draft_answer': f'{draft}\n\n{reason}'.strip() if draft else reason,
         'current_worker': worker,
         'retry_count': int(state.get('retry_count') or 0) + 1,
         'validation': None,
