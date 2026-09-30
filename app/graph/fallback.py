@@ -28,6 +28,7 @@ def fallback(
         'messages': [AIMessage(content=FALLBACK_ANSWER)],
         'draft_answer': None,
         'tool_results': [],
+        'last_tool_results': [],
         'retry_count': 0,
         'validation': None,
         'current_worker': None,

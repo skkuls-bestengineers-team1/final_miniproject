@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from langchain_core.messages import HumanMessage
 from langgraph.types import Command
 
+from app.api.chat_ui import build_chat_ui
 from app.api.schemas import (
     AdminActionResponse,
     ChatRequest,
@@ -166,6 +167,7 @@ def chat(
         answer=_last_ai_text(result.get('messages')),
         waiting_approval=False,
         ask_search_origin=(snapshot.values or {}).get('step') == 'ask_search_origin',
+        ui=build_chat_ui(snapshot.values or {}),
     )
 
 

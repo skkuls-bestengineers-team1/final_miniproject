@@ -50,12 +50,18 @@ ANSWER_STATUS_LABEL = {
 # 제품명 전체가 발화에 없을 때 worker2가 쓰는 키워드. LLM 추출이 실패하면 이것으로 대신한다.
 CATEGORY_KEYWORDS = {
     '로봇청소기': 'ROBOT_CLEANER',
+    '제트봇': 'ROBOT_CLEANER',
     '워치': 'WEARABLE',
     '이어폰': 'AUDIO',
+    '버즈': 'AUDIO',
     '태블릿': 'TABLET',
+    '탭': 'TABLET',
     '충전기': 'POWER',
+    '보조배터리': 'POWER',
     '허브': 'SMART_HOME',
+    '스마트싱스': 'SMART_HOME',
     '키보드': 'COMPUTER',
+    '사성북': 'COMPUTER',
 }
 
 

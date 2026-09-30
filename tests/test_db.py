@@ -16,9 +16,9 @@ TABLES = (
 EXPECTED = {
     'users': 2,
     'stores': 5,
-    'products': 8,
-    'inventory': 10,
-    'orders': 5,
+    'products': 15,
+    'inventory': 75,
+    'orders': 7,
     'requests': 0,
     'inquiries': 0,
 }

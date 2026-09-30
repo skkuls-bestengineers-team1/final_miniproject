@@ -1,7 +1,33 @@
+export type ChatStoreCard = {
+  rank: number
+  store_name: string
+  distance_km: number | null
+  address: string
+  lat: number | null
+  lng: number | null
+  photo_url: string
+}
+
+export type ChatProductCard = {
+  store_name: string
+  product_code: string
+  product_name: string
+  category: string
+  quantity: number
+  price: number | null
+  photo_url: string
+}
+
+export type ChatUi = {
+  stores?: ChatStoreCard[]
+  products?: ChatProductCard[]
+}
+
 export type ChatResponse = {
   answer: string
   waiting_approval: boolean
   ask_search_origin?: boolean
+  ui?: ChatUi | null
 }
 
 // 가까운 지점 검색 기준점. 주문·배송 주소와는 별개다.

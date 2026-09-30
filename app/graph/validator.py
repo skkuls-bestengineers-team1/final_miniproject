@@ -122,6 +122,7 @@ def respond(
     update = {
         'messages': [AIMessage(content=draft)],
         'draft_answer': None,
+        'last_tool_results': list(state.get('tool_results') or []),
         'tool_results': [],
         'retry_count': 0,
         'validation': None,

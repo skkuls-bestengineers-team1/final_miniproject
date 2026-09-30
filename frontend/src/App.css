@@ -265,7 +265,7 @@ select {
   gap: 14px;
   background: #fafbff;
   min-height: 360px;
-  max-height: 520px;
+  max-height: 640px;
 }
 
 .row {
@@ -283,6 +283,134 @@ select {
 .row.bot {
   align-self: flex-start;
   align-items: flex-start;
+  max-width: 100%;
+}
+
+.bot-stack {
+  min-width: 0;
+  flex: 1;
+}
+
+.store-list,
+.product-grid {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.store-card,
+.product-card {
+  display: grid;
+  grid-template-columns: 88px 1fr;
+  gap: 10px;
+  background: #fff;
+  border: 1px solid #e8edff;
+  border-radius: 14px;
+  overflow: hidden;
+  text-align: left;
+}
+
+.store-card img,
+.product-card img,
+.modal-photo {
+  width: 100%;
+  height: 88px;
+  object-fit: cover;
+}
+
+.store-card div,
+.product-card div {
+  padding: 8px 10px 10px 0;
+}
+
+.store-card p,
+.product-card p,
+.modal-meta span {
+  margin: 2px 0;
+  color: #667;
+  font-size: 12px;
+}
+
+.store-card button,
+.product-card button,
+.reserve-form button {
+  margin-top: 6px;
+  border: 0;
+  border-radius: 999px;
+  padding: 6px 12px;
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+}
+
+.modal-back {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: grid;
+  place-items: center;
+  z-index: 20;
+  padding: 16px;
+}
+
+.modal {
+  width: min(480px, 100%);
+  max-height: 90vh;
+  overflow: auto;
+  background: #fff;
+  color: #111;
+  border-radius: 18px;
+  padding: 16px;
+}
+
+.modal header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.modal h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.modal-photo {
+  height: 160px;
+  border-radius: 12px;
+}
+
+.modal-map {
+  width: 100%;
+  height: 180px;
+  border: 0;
+  border-radius: 12px;
+  margin-top: 8px;
+}
+
+.modal-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 10px 0;
+}
+
+.reserve-form {
+  display: grid;
+  gap: 10px;
+}
+
+.reserve-form label {
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.reserve-form input,
+.reserve-form select {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
 }
 
 .bot-face {

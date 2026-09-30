@@ -24,7 +24,7 @@ def tools(monkeypatch):
         return {
             'ok': True,
             'store_name': store_name,
-            'items': [{'product_name': 'A 로봇청소기', 'quantity': 10}],
+            'items': [{'product_name': '사성 비스포크 제트봇 AI', 'quantity': 10}],
             'total': 10,
             'product_name': product_name,
             'category_code': category_code,
@@ -80,7 +80,9 @@ def test_store_given_answers_directly(monkeypatch, tools):
     update = w.worker2(_state('강남역 로봇청소기 재고'))
 
     assert update['step'] is None
-    assert '강남역점 재고는 10개' in update['draft_answer']
+    assert '강남역점 재고입니다' in update['draft_answer']
+    assert '사성 비스포크 제트봇 AI' in update['draft_answer']
+    assert '재고 10개' in update['draft_answer']
     assert tools['nearest_origin'] is None
 
 
@@ -168,13 +170,15 @@ def test_asked_before_and_expired_uses_registered(monkeypatch, tools):
 
 
 def test_ask_missing_updates_product(monkeypatch, tools):
-    _extract_returns(monkeypatch, store_name='용산점', product_name='A 로봇청소기')
+    _extract_returns(monkeypatch, store_name='용산점', product_name='사성 비스포크 제트봇 AI')
 
     update = w.worker2(_state(
-        '용산점 A 로봇청소기요',
+        '용산점 사성 비스포크 제트봇 AI요',
         step='ask_missing',
         pending_data={'product_name': None, 'category_code': 'ROBOT_CLEANER'},
     ))
 
     assert update['step'] is None
-    assert '용산점 A 로봇청소기 재고는 10개' in update['draft_answer']
+    assert '용산점 재고입니다' in update['draft_answer']
+    assert '사성 비스포크 제트봇 AI' in update['draft_answer']
+    assert '재고 10개' in update['draft_answer']

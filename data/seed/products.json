@@ -1,50 +1,92 @@
 [
   {
     "product_code": "PRD-6001",
-    "product_name": "A 로봇청소기",
+    "product_name": "사성 비스포크 제트봇 AI",
+    "category_code": "ROBOT_CLEANER",
+    "price": 1290000
+  },
+  {
+    "product_code": "PRD-6002",
+    "product_name": "사성 제트봇 90 콤보",
+    "category_code": "ROBOT_CLEANER",
+    "price": 899000
+  },
+  {
+    "product_code": "PRD-6003",
+    "product_name": "사성 제트봇 70",
     "category_code": "ROBOT_CLEANER",
     "price": 599000
   },
   {
-    "product_code": "PRD-6002",
-    "product_name": "B 로봇청소기",
-    "category_code": "ROBOT_CLEANER",
-    "price": 799000
-  },
-  {
     "product_code": "PRD-1001",
-    "product_name": "스마트 워치 A1",
+    "product_name": "사성 워치7 블루투스 44mm",
     "category_code": "WEARABLE",
-    "price": 249000
+    "price": 429000
   },
   {
     "product_code": "PRD-1002",
-    "product_name": "무선 이어폰 B2",
+    "product_name": "사성 버즈3 프로",
     "category_code": "AUDIO",
-    "price": 189000
+    "price": 289000
   },
   {
-    "product_code": "PRD-2001",
-    "product_name": "태블릿 C10",
-    "category_code": "TABLET",
-    "price": 499000
+    "product_code": "PRD-1003",
+    "product_name": "사성 워치 Ultra",
+    "category_code": "WEARABLE",
+    "price": 999000
   },
   {
-    "product_code": "PRD-3001",
-    "product_name": "휴대용 충전기 P5",
-    "category_code": "POWER",
-    "price": 39000
-  },
-  {
-    "product_code": "PRD-4001",
-    "product_name": "스마트 홈 허브 H1",
-    "category_code": "SMART_HOME",
+    "product_code": "PRD-1004",
+    "product_name": "사성 버즈 FE",
+    "category_code": "AUDIO",
     "price": 129000
   },
   {
+    "product_code": "PRD-2001",
+    "product_name": "사성 탭 S10",
+    "category_code": "TABLET",
+    "price": 1199000
+  },
+  {
+    "product_code": "PRD-2002",
+    "product_name": "사성 탭 A9",
+    "category_code": "TABLET",
+    "price": 349000
+  },
+  {
+    "product_code": "PRD-3001",
+    "product_name": "사성 25W 초고속 충전기",
+    "category_code": "POWER",
+    "price": 29000
+  },
+  {
+    "product_code": "PRD-3002",
+    "product_name": "사성 보조배터리 20000mAh",
+    "category_code": "POWER",
+    "price": 59000
+  },
+  {
+    "product_code": "PRD-4001",
+    "product_name": "사성 스마트싱스 허브 2",
+    "category_code": "SMART_HOME",
+    "price": 139000
+  },
+  {
+    "product_code": "PRD-4002",
+    "product_name": "사성 스마트싱스 스테이션",
+    "category_code": "SMART_HOME",
+    "price": 199000
+  },
+  {
     "product_code": "PRD-5001",
-    "product_name": "기계식 키보드 K8",
+    "product_name": "사성 트리오 500 키보드",
     "category_code": "COMPUTER",
-    "price": 159000
+    "price": 189000
+  },
+  {
+    "product_code": "PRD-5002",
+    "product_name": "사성북 프로 14",
+    "category_code": "COMPUTER",
+    "price": 1890000
   }
 ]

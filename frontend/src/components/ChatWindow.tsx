@@ -1,7 +1,9 @@
 import { FormEvent, useEffect, useRef, useState } from 'react'
+import type { ChatStoreCard } from '../api'
 import { Position, SendOptions, sendMessage } from '../api'
 import { BotMark } from './BotMark'
 import { ChatMessage, MessageBubble } from './MessageBubble'
+import { ReservationModal } from './ReservationModal'
 
 type ChatWindowProps = {
   userId: string
@@ -64,6 +66,7 @@ export function ChatWindow({
   const [askOrigin, setAskOrigin] = useState(false)
   const [addressMode, setAddressMode] = useState(false)
   const [locating, setLocating] = useState(false)
+  const [reserveStore, setReserveStore] = useState<ChatStoreCard | null>(null)
   const logRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const sendingRef = useRef(false)
@@ -76,6 +79,7 @@ export function ChatWindow({
     setAskOrigin(false)
     setAddressMode(false)
     setLocating(false)
+    setReserveStore(null)
     sendingRef.current = false
     setSending(false)
   }, [userId])
@@ -124,7 +128,7 @@ export function ChatWindow({
 
       setMessages((current) => [
         ...current,
-        { role: 'bot', text: `${result.answer}${suffix}`, time: clock() },
+        { role: 'bot', text: `${result.answer}${suffix}`, time: clock(), ui: result.ui },
       ])
     } catch (error) {
       const message = error instanceof Error ? error.message : '전송에 실패했습니다.'
@@ -180,6 +184,7 @@ export function ChatWindow({
     setAskOrigin(false)
     setAddressMode(false)
     setLocating(false)
+    setReserveStore(null)
     sendingRef.current = false
     setSending(false)
   }
@@ -232,7 +237,16 @@ export function ChatWindow({
       </header>
       <div className="log" ref={logRef}>
         {messages.map((message, index) => (
-          <MessageBubble key={`${message.role}-${index}`} message={message} />
+          <MessageBubble
+            key={`${message.role}-${index}`}
+            message={message}
+            onReserve={(name) => {
+              const found = (message.ui?.stores || []).find((store) => store.store_name === name)
+              if (found) {
+                setReserveStore(found)
+              }
+            }}
+          />
         ))}
         {sending ? (
           <div className="row bot">
@@ -285,6 +299,9 @@ export function ChatWindow({
           © OpenStreetMap contributors
         </a>
       </p>
+      {reserveStore ? (
+        <ReservationModal store={reserveStore} onClose={() => setReserveStore(null)} />
+      ) : null}
     </section>
   )
 }

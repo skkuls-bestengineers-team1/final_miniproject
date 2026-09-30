@@ -200,14 +200,15 @@ def _format_stock(
     items = result.get('items') or []
     store_name = result.get('store_name') or ''
 
-    if result.get('product_name') and len(items) == 1:
-        item = items[0]
-        return f"{store_name} {item['product_name']} 재고는 {item['quantity']}개입니다."
-
-    lines = [f"{store_name} 재고는 {result.get('total', 0)}개입니다."]
+    lines = [f"{store_name} 재고입니다. 아래에서 상품 정보를 볼 수 있습니다."]
 
     for item in items:
-        lines.append(f"- {item['product_name']}: {item['quantity']}개")
+        category = CATEGORY_LABEL.get(item.get('category_code') or '', item.get('category_code') or '')
+        price = item.get('price')
+        price_text = f"{int(price):,}원" if price is not None else '-'
+        lines.append(
+            f"- {item['product_name']} ({category}): 재고 {item['quantity']}개 · {price_text}"
+        )
 
     return '\n'.join(lines)
 

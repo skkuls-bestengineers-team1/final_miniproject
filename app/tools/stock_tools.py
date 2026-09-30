@@ -60,7 +60,7 @@ def get_stock(
             return fail('PRODUCT_NOT_FOUND', f'{product_name} 제품을 찾지 못했습니다.')
 
     sql = '''
-        SELECT p.product_code, p.product_name, p.category_code, i.quantity
+        SELECT p.product_code, p.product_name, p.category_code, p.price, i.quantity
         FROM inventory i
         JOIN products p ON p.product_code = i.product_code
         WHERE i.store_id = %s

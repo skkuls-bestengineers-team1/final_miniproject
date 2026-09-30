@@ -19,6 +19,7 @@ class State(TypedDict):
     pending_data: dict
     draft_answer: str | None
     tool_results: list[dict]
+    last_tool_results: list[dict]
     retry_count: int
     validation: dict | None
     search_origin: dict | None   # 지점 검색 기준점 {lat, lng, source, label, at}. 주문·배송 주소와 별개
@@ -39,6 +40,7 @@ def initial_state(
         'pending_data': {},
         'draft_answer': None,
         'tool_results': [],
+        'last_tool_results': [],
         'retry_count': 0,
         'validation': None,
         'search_origin': None,

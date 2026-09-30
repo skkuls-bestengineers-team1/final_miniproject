@@ -24,6 +24,7 @@ class ChatResponse(BaseModel):
     answer: str
     waiting_approval: bool = False
     ask_search_origin: bool = False            # True면 화면에 기준 위치 선택 버튼 표시
+    ui: dict | None = None
 
 
 class RequestItem(BaseModel):
