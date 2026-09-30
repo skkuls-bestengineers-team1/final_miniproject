@@ -368,11 +368,42 @@ select {
   margin: 12px 18px 4px;
 }
 
+.origin-pick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 18px 0;
+}
+
+.origin-pick button {
+  border: 1px solid transparent;
+  background: var(--chip);
+  color: #2747b3;
+  border-radius: 999px;
+  padding: 8px 14px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.origin-pick button.selected {
+  border-color: var(--accent);
+  background: #fff;
+}
+
+.origin-pick button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
 .disclaimer {
   margin: 0 0 14px;
   text-align: center;
   color: #98a0b3;
   font-size: 12px;
+}
+
+.disclaimer a {
+  color: inherit;
 }
 
 .features {
