@@ -1,3 +1,6 @@
+from app.graph.supervisor import classify_intent
+
+
 '''문의 CSV 분류.
 
 LLM 키가 없으면 실제 분류 테스트는 건너뛴다.
@@ -87,4 +90,37 @@ def test_llm_classification():
     if not os.getenv('GEMINI_API_KEY') and not os.getenv('GOOGLE_API_KEY'):
         pytest.skip('LLM 키가 없어 분류 테스트를 건너뜁니다.')
 
-    pytest.skip('LLM 분류가 아직 연결되지 않았습니다.')
+    rows = _rows()
+    checked = 0
+
+    for row in rows:
+        expected = expected_target(
+            row.get('inquiry_type_code', ''),
+            row.get('inquiry_text', ''),
+        )
+
+        if expected is None:
+            continue
+
+        result = classify_intent(
+            row['inquiry_text']
+        )
+
+@pytest.mark.parametrize(
+    'text, expected',
+    [
+        ('가까운 매장 알려줘', 'worker1'),
+        ('강남역점에 로봇청소기 재고 있어?', 'worker2'),
+        ('내 주문 배송 언제 와?', 'worker3'),
+        ('구매한 제품 환불하고 싶어', 'worker4'),
+        ('비밀번호 변경하고 싶어', 'fallback'),
+    ]
+)
+def test_basic_llm_routes(text, expected):
+
+    if not os.getenv('GEMINI_API_KEY') and not os.getenv('GOOGLE_API_KEY'):
+        pytest.skip('LLM 키가 없어 분류 테스트를 건너뜁니다.')
+
+    result = classify_intent(text)
+
+    assert result.target == expected
