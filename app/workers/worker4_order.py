@@ -1,31 +1,13 @@
 '''UC5 교환, UC6 환불.
 
 담당: 박종석
-
-작업 가이드 (스켈레톤. 흐름은 유지하고 키워드 stub만 LLM으로)
-
-냅둘 것
-- step 상태머신: None → confirm_order → select_method → confirm_address
-  (아니요면 select_order → 다시 confirm_order, 주소 아니면 input_address)
-- Tool: get_orders, create_exchange_request, create_refund_request
-- _within_return_window (수령 후 7일). 기간 계산을 모델에 맡기지 말 것
-- waiting / finished / pending_data / draft_answer. 답을 messages에 직접 넣지 말 것
-- 검증 fail 시 Tool 재호출 금지. validation_retry_update 훅은 유지하고 문장만 고칠 것
-
-지우고 다시 쓸 것 (키워드 stub → LLM 추출·문장)
-- _request_type: "환불" 글자면 REFUND, 아니면 EXCHANGE
-- _pick_order: 제품명 포함 여부 + PRD-6001 빨간색 하드코딩
-- _parse_method: "수거"/"택배"/"방문" 글자
-- _confirm_fields, _closing, 안내 문구 전부 f-string 템플릿
-- 기간 지난 주문도 지금은 그냥 고른다. LLM 안내 후 거절하는 분기를 넣을 것
-- 지점 방문 시 worker1 GEO 안내 대신 안내 문장만 있음
-- 분쟁해결기준 search_dispute_docs 미연결. 배송비·철회 기간 질문에 Tool 결과를 문장에 넣을 것
-
-건드리지 말 것
-- supervisor 라우팅, validator, schema, GEO 적재
+LLM은 app.llm.get_llm() (Gemini). ChatOpenAI 쓰지 않는다.
 '''
 
 from datetime import date, datetime
+from typing import Literal
+
+from pydantic import BaseModel, Field
 
 from app.db.codes import format_korean_date
 from app.graph.confirm import (
@@ -37,20 +19,82 @@ from app.graph.confirm import (
     waiting,
 )
 from app.graph.state import State
+from app.llm import get_llm
+from app.tools.dispute_tools import search_dispute_docs
 from app.tools.order_tools import get_orders
 from app.tools.request_tools import create_exchange_request, create_refund_request
+from app.tools.store_tools import find_nearest_stores
+
+DISPUTE_HINTS = (
+    '배송비', '철회', '청약', '규정', '분쟁',
+    '색상', '하자', '변심', '누가 내', '비용 부담',
+    '교환', '환불' , '결함' ,
+)
+
+
+class IntentVerdict(BaseModel):
+    request_type: Literal['EXCHANGE', 'REFUND']
+
+
+class MethodVerdict(BaseModel):
+    method: Literal['STORE_VISIT', 'PICKUP', 'NONE']
+
+
+class OrderPick(BaseModel):
+    index: int = Field(description='주문 목록 인덱스. 모르면 0')
+
+
+def _invoke_structured(
+        schema,
+        prompt: str,
+):
+    try:
+        return get_llm().with_structured_output(schema).invoke(prompt)
+
+    except Exception:
+        return None
+
+
+def _rewrite_draft(
+        draft: str,
+        reason: str
+) -> str:
+    prompt = (
+        '교환/환불 상담 초안을 고친다. Tool 숫자·주문번호·주소·지점명은 바꾸지 마라.\n'
+        f'[검증 지시]\n{reason}\n\n[초안]\n{draft}\n\n고친 문장만 출력.'
+    )
+
+    try:
+        result = get_llm().invoke(prompt)
+        text = getattr(result, 'content', None) or str(result)
+        return str(text).strip() or draft
+
+    except Exception:
+        return draft
 
 
 def _request_type(
         text: str,
         pending: dict
 ) -> str:
-    # 다시 쓰기: 키워드 대신 LLM이 EXCHANGE | REFUND 를 뽑게 한다.
-    # 냅두기: pending에 이미 있으면 그 값을 유지 (멀티턴에서 의도 고정).
     if pending.get('request_type'):
         return pending['request_type']
 
-    if '환불' in text:
+    verdict = _invoke_structured(
+        IntentVerdict,
+        '사용자 발화가 교환이면 EXCHANGE, 환불·반품이면 REFUND.\n'
+        f'발화: {text}',
+    )
+
+    if verdict is not None:
+        value = getattr(verdict, 'request_type', None) or (
+            verdict.get('request_type') if isinstance(verdict, dict) else None
+        )
+
+        if value in {'EXCHANGE', 'REFUND'}:
+            return value
+
+    if '환불' in text or '반품' in text:
         return 'REFUND'
 
     return 'EXCHANGE'
@@ -59,7 +103,6 @@ def _request_type(
 def _within_return_window(
         order: dict
 ) -> bool:
-    # 냅두기: 수령일 기준 7일. LLM 추정 금지.
     delivered = order.get('delivered_date')
 
     if order.get('delivery_status') != 'DELIVERED' or not delivered:
@@ -74,50 +117,52 @@ def _pick_order(
         orders: list[dict],
         text: str
 ) -> dict | None:
-    '''수령 후 7일 안의 주문을 우선한다. 대표 예시는 빨간색 A 로봇청소기다.'''
-
-    # 다시 쓰기: 발화에서 주문/제품/옵션을 추출해 get_orders 결과와 매칭.
-    # 지울 것: product_name in text, PRD-6001+빨간색 우선순위 하드코딩.
-    # 냅두기: 후보 목록은 get_orders. 기간은 _within_return_window로 걸러서
-    # 창 밖이면 접수하지 말고 안내만.
-
     if not orders:
         return None
 
-    named = [order for order in orders if order['product_name'] in text]
-    pool = named or orders
-    returnable = [order for order in pool if _within_return_window(order)]
+    if len(orders) == 1:
+        return orders[0]
 
-    for order in returnable:
-        if order['product_code'] == 'PRD-6001' and order.get('option') == '빨간색':
-            return order
+    summary = '\n'.join(
+        f"[{index}] {order['order_id']} {order['product_name']} / {order.get('option') or '-'}"
+        for index, order in enumerate(orders)
+    )
+    verdict = _invoke_structured(
+        OrderPick,
+        '목록에서 사용자 발화에 해당하는 주문의 인덱스만 고른다. '
+        '특정할 수 없으면 0.\n'
+        f'[목록]\n{summary}\n[발화]\n{text}',
+    )
+
+    if verdict is not None:
+        index = getattr(verdict, 'index', None)
+
+        if isinstance(verdict, dict):
+            index = verdict.get('index')
+
+        if isinstance(index, int) and 0 <= index < len(orders):
+            return orders[index]
+
+    returnable = [order for order in orders if _within_return_window(order)]
 
     if returnable:
         return returnable[0]
 
-    for order in pool:
-        if order['product_code'] == 'PRD-6001' and order.get('option') == '빨간색':
-            return order
-
-    return pool[0]
+    return orders[0]
 
 
 def _confirm_fields(
         order: dict,
         request_type: str
 ) -> dict[str, str]:
-    # 냅두기: 확인 카드에 넣는 필드 값은 주문 Tool 그대로.
-    # 다시 쓰기: 안내 문장(build_confirm_message 결과)은 LLM으로 다듬기.
     fields = {
         '제품명': order['product_name'],
         '옵션': order.get('option') or '-',
+        '주문번호': order['order_id'],
     }
 
     if request_type == 'REFUND':
-        fields = {
-            '주문 날짜': format_korean_date(order['order_date']),
-            **fields,
-        }
+        fields['주문 날짜'] = format_korean_date(order['order_date'])
 
     return fields
 
@@ -125,8 +170,23 @@ def _confirm_fields(
 def _parse_method(
         text: str
 ) -> str | None:
-    # 다시 쓰기: LLM이 STORE_VISIT | PICKUP | None.
-    # 반환 코드 두 개와 아래 step 분기는 유지.
+    verdict = _invoke_structured(
+        MethodVerdict,
+        '지점 방문이면 STORE_VISIT, 택배·수거면 PICKUP, 불명이면 NONE.\n'
+        f'입력: {text}',
+    )
+
+    if verdict is not None:
+        method = getattr(verdict, 'method', None) or (
+            verdict.get('method') if isinstance(verdict, dict) else None
+        )
+
+        if method in {'STORE_VISIT', 'PICKUP'}:
+            return method
+
+        if method == 'NONE':
+            return None
+
     if '수거' in text or '택배' in text:
         return 'PICKUP'
 
@@ -137,10 +197,15 @@ def _parse_method(
 
 
 def _closing(
-        request_type: str
+        request_type: str,
+        order_id: str = ''
 ) -> str:
-    # 다시 쓰기: 접수 완료 문장 LLM. 날짜·주문번호는 Tool 값만.
-    body = '빠른 시일 내에 택배 기사님께서 회수 처리하도록 하겠습니다.'
+    label = '환불' if request_type == 'REFUND' else '교환'
+    suffix = f' (주문번호: {order_id})' if order_id else ''
+    body = (
+        f'{label} 접수가 완료되었습니다{suffix}.\n'
+        '빠른 시일 내에 택배 기사님께서 회수 처리하도록 하겠습니다.'
+    )
 
     if request_type == 'REFUND':
         return f'{body}\n감사합니다.'
@@ -148,14 +213,71 @@ def _closing(
     return f'{body}\n불편을 드려 죄송합니다.'
 
 
+def _dispute_block(
+        text: str
+) -> tuple[str, dict | None]:
+    if not any(hint in text for hint in DISPUTE_HINTS):
+        return '', None
+
+    found = search_dispute_docs(text)
+
+    if not found.get('ok'):
+        return '', found
+
+    items = found.get('items') or []
+
+    if not items:
+        return '', found
+
+    top = items[0]
+    source_ids = top.get('doc_ids') or []
+    cited = source_ids[0] if source_ids else top.get('doc_id')
+    note = (
+        f"\n\n[관련 규정 {top.get('doc_id')} / 근거 {cited}]\n"
+        f"{top.get('title') or ''}\n"
+        f"{top.get('content') or ''}"
+    )
+
+    return note, found
+
+
+def _store_guide(
+        user_id: str
+) -> tuple[str, dict]:
+    result = find_nearest_stores(user_id)
+
+    if not result.get('ok'):
+        return '', result
+
+    lines = []
+
+    for store in result.get('stores') or []:
+        name = store.get('store_name') or ''
+        distance = store.get('distance_km')
+
+        if distance is None:
+            lines.append(name)
+            continue
+
+        lines.append(f'{name} ({float(distance):.1f}km)')
+
+    if not lines:
+        return '', result
+
+    return '가까운 지점: ' + ', '.join(lines), result
+
+
 def worker4(
         state: State
 ) -> dict:
-    # 다시 쓰기: 아래는 reason을 초안 끝에 붙이기만 함.
-    # LLM으로 문장만 재작성. get_orders / create_* 다시 치지 말 것.
     retried = validation_retry_update(state, 'worker4')
 
     if retried:
+        reason = (state.get('validation') or {}).get('reason') or ''
+        retried['draft_answer'] = _rewrite_draft(
+            retried.get('draft_answer') or '',
+            reason,
+        )
         return retried
 
     text = latest_user_text(state)
@@ -164,25 +286,36 @@ def worker4(
     request_type = _request_type(text, pending)
     label = '환불' if request_type == 'REFUND' else '교환'
     pending['request_type'] = request_type
+    rag_note, dispute_result = _dispute_block(text)
 
-    # 냅두기: step 분기 전체. 없는 step을 새로 만들기보다 아래 훅만 LLM으로.
-    # 추가할 것: 교환/환불 사유·배송비 질문이면 search_dispute_docs로 조 전체를 가져와
-    # 초안에 근거(doc_id)와 함께 넣기. RAG 적재는 김동규 쪽 완료(ART-01~15).
     if step is None:
         listed = get_orders(state['user_id'])
-        order = _pick_order(listed.get('orders') or [], text)
+        orders = listed.get('orders') or []
+        order = _pick_order(orders, text)
+        payload = listed
+
+        if dispute_result is not None:
+            payload = {**listed, 'dispute': dispute_result}
 
         if order is None:
-            return finished(state, 'worker4', '조회할 주문이 없습니다.', listed)
+            return finished(state, 'worker4', '조회할 주문이 없습니다.', payload)
+
+        if not _within_return_window(order):
+            refuse = (
+                f"선택하신 제품({order['product_name']})은 수령 후 7일이 지나 "
+                f'{label} 접수가 어렵습니다.'
+            )
+            return finished(state, 'worker4', refuse + rag_note, payload)
 
         pending['order_id'] = order['order_id']
         pending['shown_address'] = order['ship_address']
         pending['order_summary'] = f"{order['product_name']} / {order.get('option') or '-'}"
+        draft = build_confirm_message(
+            f'아래 {label} 신청 정보가 맞습니까?',
+            _confirm_fields(order, request_type),
+        )
 
-        title = '아래의 주문 정보가 맞습니까?'
-        draft = build_confirm_message(title, _confirm_fields(order, request_type))
-
-        return waiting(state, 'worker4', 'confirm_order', draft, pending, listed)
+        return waiting(state, 'worker4', 'confirm_order', draft + rag_note, pending, payload)
 
     if step == 'confirm_order':
         answer = parse_yes_no(text)
@@ -236,10 +369,7 @@ def worker4(
                 chosen = options[index]
 
         if chosen is None:
-            for order in options:
-                if order['order_id'] in text or order['product_name'] in text:
-                    chosen = order
-                    break
+            chosen = _pick_order(options, text) if options else None
 
         if chosen is None:
             return waiting(
@@ -250,10 +380,17 @@ def worker4(
                 pending,
             )
 
+        if not _within_return_window(chosen):
+            refuse = (
+                f"선택하신 제품({chosen['product_name']})은 수령 후 7일이 지나 "
+                f'{label} 접수가 어렵습니다.'
+            )
+            return finished(state, 'worker4', refuse)
+
         pending['order_id'] = chosen['order_id']
         pending['shown_address'] = chosen['ship_address']
         draft = build_confirm_message(
-            '아래의 주문 정보가 맞습니까?',
+            f'아래 {label} 신청 정보가 맞습니까?',
             _confirm_fields(chosen, request_type),
         )
 
@@ -263,8 +400,6 @@ def worker4(
         method = _parse_method(text)
 
         if method == 'STORE_VISIT':
-            # 다시 쓰기: find_nearest_stores(user_id)로 가까운 지점을 받아 안내에 넣기.
-            # worker1 노드로 그래프를 갈아타지 말고, 같은 Tool을 여기서 호출하면 된다.
             creator = create_exchange_request if request_type == 'EXCHANGE' else create_refund_request
             created = creator(
                 pending['order_id'],
@@ -272,26 +407,24 @@ def worker4(
                 'STORE_VISIT',
                 reason=text,
             )
-            message = created.get('message')
 
             if not created.get('ok'):
-                return finished(state, 'worker4', message or '접수하지 못했습니다.', created)
+                return finished(state, 'worker4', created.get('message') or '접수하지 못했습니다.', created)
 
-            draft = (
-                f'{label} 접수를 지점 방문으로 남겼습니다. '
-                '가까운 지점은 지점 문의로 다시 확인해 주세요.'
-            )
+            guide, geo = _store_guide(state['user_id'])
+            extra = f'\n{guide}' if guide else '\n가까운 지점은 지점 문의로 다시 확인해 주세요.'
+            draft = f"{label} 접수를 지점 방문으로 남겼습니다.{extra}"
+            payload = {'ok': True, 'request': created, 'stores': geo}
 
-            return finished(state, 'worker4', draft, created)
+            return finished(state, 'worker4', draft, payload)
 
         if method == 'PICKUP':
+            pending['method'] = 'PICKUP'
             draft = (
                 '현재 주소가 아래가 맞습니까?\n'
                 '[현재]\n'
                 f"{pending.get('shown_address', '')}"
             )
-
-            pending['method'] = 'PICKUP'
 
             return waiting(state, 'worker4', 'confirm_address', draft, pending)
 
@@ -324,7 +457,12 @@ def worker4(
                     created,
                 )
 
-            return finished(state, 'worker4', _closing(request_type), created)
+            return finished(
+                state,
+                'worker4',
+                _closing(request_type, pending.get('order_id') or ''),
+                created,
+            )
 
         if answer == 'no':
             return waiting(
@@ -361,6 +499,11 @@ def worker4(
                 created,
             )
 
-        return finished(state, 'worker4', _closing(request_type), created)
+        return finished(
+            state,
+            'worker4',
+            _closing(request_type, pending.get('order_id') or ''),
+            created,
+        )
 
     return finished(state, 'worker4', f'{label} 문의를 이어서 처리하지 못했습니다.', None)
