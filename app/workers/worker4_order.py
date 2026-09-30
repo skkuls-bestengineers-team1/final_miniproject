@@ -28,6 +28,7 @@ from app.tools.store_tools import find_nearest_stores
 DISPUTE_HINTS = (
     '배송비', '철회', '청약', '규정', '분쟁',
     '색상', '하자', '변심', '누가 내', '비용 부담',
+    '교환', '환불' , '결함' ,
 )
 
 
