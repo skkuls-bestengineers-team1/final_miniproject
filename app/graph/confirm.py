@@ -1,7 +1,11 @@
 '''확인 질문과 긍정·부정 판별.
 
 담당: 박종석
-TODO(박종석): 키워드 판별을 LLM 판별로 교체
+
+냅둘 것: finished, waiting, latest_user_text, validation_retry_update 시그니처.
+         worker3·4가 같이 씀. 답을 messages에 넣지 말 것.
+다시 쓸 것: parse_yes_no (네/아니 키워드), 확인 문장 톤.
+         validation_retry_update 안의 "[검증 반영]" 붙이기는 임시.
 '''
 
 from typing import Literal
@@ -28,6 +32,8 @@ def parse_yes_no(
         user_text: str
 ) -> Literal['yes', 'no', 'unknown']:
     '''짧은 답의 임시 판별.'''
+
+    # 다시 쓰기: LLM이 yes | no | unknown. 반환 세 값은 유지 (worker3도 사용).
 
     text = user_text.strip()
 
