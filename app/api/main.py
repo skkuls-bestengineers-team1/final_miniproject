@@ -25,6 +25,7 @@ from app.graph.builder import build_graph
 from app.graph.state import initial_state
 from app.redis_store.checkpointer import close_checkpointer, get_checkpointer
 from app.tools.request_tools import mark_request_status
+from app.tools.search_origin import current_origin, registered_origin
 
 graph = None
 graph_error = ''
@@ -141,6 +142,16 @@ def chat(
             HumanMessage(content=body.message),
         )
 
+    # 기준 위치 버튼을 누른 턴에만 search_origin을 넣는다. 그 외 턴은 State에 남은 값을 쓴다.
+    if body.current_position:
+        payload['search_origin'] = current_origin(
+            body.current_position.lat,
+            body.current_position.lng,
+        )
+
+    elif body.use_registered_address:
+        payload['search_origin'] = registered_origin(user_id)
+
     result = compiled.invoke(payload, config)
     snapshot = compiled.get_state(config)
     paused = _interrupt_payload(snapshot)
@@ -154,6 +165,7 @@ def chat(
     return ChatResponse(
         answer=_last_ai_text(result.get('messages')),
         waiting_approval=False,
+        ask_search_origin=(snapshot.values or {}).get('step') == 'ask_search_origin',
     )
 
 

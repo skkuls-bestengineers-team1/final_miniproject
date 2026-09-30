@@ -47,8 +47,7 @@ ANSWER_STATUS_LABEL = {
     'ANSWERED': '답변 완료',
 }
 
-# 제품명 전체가 발화에 없을 때 worker2가 쓰는 임시 키워드.
-# TODO(박서영): LLM 추출로 교체
+# 제품명 전체가 발화에 없을 때 worker2가 쓰는 키워드. LLM 추출이 실패하면 이것으로 대신한다.
 CATEGORY_KEYWORDS = {
     '로봇청소기': 'ROBOT_CLEANER',
     '워치': 'WEARABLE',

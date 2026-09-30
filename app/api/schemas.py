@@ -6,14 +6,24 @@
 from pydantic import BaseModel, Field
 
 
+class Position(BaseModel):
+    '''브라우저 geolocation 좌표.'''
+
+    lat: float = Field(ge=-90, le=90)
+    lng: float = Field(ge=-180, le=180)
+
+
 class ChatRequest(BaseModel):
     user_id: str = 'U001'
     message: str
+    current_position: Position | None = None   # [현재 위치] 선택 시
+    use_registered_address: bool = False       # [등록 주소로] 선택 또는 위치 권한 거부 시
 
 
 class ChatResponse(BaseModel):
     answer: str
     waiting_approval: bool = False
+    ask_search_origin: bool = False            # True면 화면에 기준 위치 선택 버튼 표시
 
 
 class RequestItem(BaseModel):
