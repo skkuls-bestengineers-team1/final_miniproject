@@ -11,7 +11,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from app.graph.state import State
-from app.llm import get_llm
+from app.llm import content_text, get_llm
 
 NO_WORDS = (
     '아니', '아뇨', '아니요', '아닙니다', '틀렸', '틀려', '틀림',
@@ -109,22 +109,10 @@ def latest_user_text(
         if role not in {'human', 'user'}:
             continue
 
-        content = getattr(message, 'content', '')
+        text = content_text(getattr(message, 'content', ''))
 
-        if isinstance(content, str):
-            return content
-
-        if isinstance(content, list):
-            parts = []
-
-            for part in content:
-                if isinstance(part, dict):
-                    parts.append(str(part.get('text', '')))
-
-                else:
-                    parts.append(str(part))
-
-            return ' '.join(parts)
+        if text:
+            return text
 
     return ''
 

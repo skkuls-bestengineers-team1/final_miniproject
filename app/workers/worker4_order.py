@@ -19,7 +19,7 @@ from app.graph.confirm import (
     waiting,
 )
 from app.graph.state import State
-from app.llm import get_llm
+from app.llm import get_llm, llm_text
 from app.tools.dispute_tools import search_dispute_docs
 from app.tools.order_tools import get_orders
 from app.tools.request_tools import create_exchange_request, create_refund_request
@@ -65,9 +65,8 @@ def _rewrite_draft(
     )
 
     try:
-        result = get_llm().invoke(prompt)
-        text = getattr(result, 'content', None) or str(result)
-        return str(text).strip() or draft
+        text = llm_text(get_llm().invoke(prompt))
+        return text or draft
 
     except Exception:
         return draft

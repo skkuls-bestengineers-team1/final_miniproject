@@ -19,11 +19,13 @@ from app.api.schemas import (
     NotificationItem,
     NotificationResponse,
     RequestItem,
+    SessionResetRequest,
 )
 from app.config import settings
 from app.db.connection import fetch_all
 from app.graph.builder import build_graph
 from app.graph.state import initial_state
+from app.llm import content_text
 from app.redis_store.checkpointer import close_checkpointer, get_checkpointer
 from app.tools.request_tools import mark_request_status
 from app.tools.search_origin import current_origin, registered_origin
@@ -100,17 +102,52 @@ def _interrupt_payload(snapshot) -> dict | None:
     return {'draft': str(value)}
 
 
+def _clear_thread(
+        compiled,
+        user_id: str
+) -> None:
+    '''승인 대기로 멈춘 세션을 지운다. 같은 사용자가 다른 문의를 이어서 할 수 있다.'''
+
+    saver = getattr(compiled, 'checkpointer', None)
+
+    if saver is None:
+        saver = get_checkpointer()
+
+    delete = getattr(saver, 'delete_thread', None)
+
+    if callable(delete):
+        try:
+            delete(user_id)
+            return
+        except Exception:
+            pass
+
+    compiled.invoke(
+        Command(resume={'approved': False}),
+        _config(user_id),
+    )
+
+
+def _graph_snapshot(
+        compiled,
+        config: dict
+):
+    try:
+        return compiled.get_state(config)
+
+    except Exception:
+        return None
+
+
 def _last_ai_text(messages) -> str:
     for message in reversed(messages or []):
         if getattr(message, 'type', None) != 'ai':
             continue
 
-        content = message.content
+        text = content_text(message.content)
 
-        if isinstance(content, str):
-            return content
-
-        return str(content)
+        if text:
+            return text
 
     return ''
 
@@ -123,16 +160,17 @@ def chat(
     compiled = _require_graph()
     user_id = x_user_id or body.user_id or settings.default_user_id
     config = _config(user_id)
-    snapshot = compiled.get_state(config)
-    paused = _interrupt_payload(snapshot)
+    snapshot = _graph_snapshot(compiled, config)
+    paused = _interrupt_payload(snapshot) if snapshot else None
 
+    # interrupt는 관리자 승인용이다. 사용자가 새 문의를 보내면 대기를 풀고 다시 분류한다.
     if paused:
-        return ChatResponse(
-            answer=paused.get('draft') or '관리자 승인을 기다리고 있습니다.',
-            waiting_approval=True,
-        )
+        _clear_thread(compiled, user_id)
+        snapshot = _graph_snapshot(compiled, config)
 
-    if snapshot.values:
+    has_state = bool(snapshot and snapshot.values)
+
+    if has_state:
         payload = {
             'messages': [HumanMessage(content=body.message)],
         }
@@ -154,8 +192,8 @@ def chat(
         payload['search_origin'] = registered_origin(user_id)
 
     result = compiled.invoke(payload, config)
-    snapshot = compiled.get_state(config)
-    paused = _interrupt_payload(snapshot)
+    snapshot = _graph_snapshot(compiled, config)
+    paused = _interrupt_payload(snapshot) if snapshot else None
 
     if paused:
         return ChatResponse(
@@ -166,9 +204,20 @@ def chat(
     return ChatResponse(
         answer=_last_ai_text(result.get('messages')),
         waiting_approval=False,
-        ask_search_origin=(snapshot.values or {}).get('step') == 'ask_search_origin',
-        ui=build_chat_ui(snapshot.values or {}),
+        ask_search_origin=(snapshot.values or {}).get('step') == 'ask_search_origin' if snapshot else False,
+        ui=build_chat_ui((snapshot.values if snapshot else None) or {}),
     )
+
+
+@app.post('/chat/reset')
+def reset_chat_session(
+        body: SessionResetRequest,
+        x_user_id: str | None = Header(default=None),
+) -> dict:
+    compiled = _require_graph()
+    user_id = x_user_id or body.user_id or settings.default_user_id
+    _clear_thread(compiled, user_id)
+    return {'ok': True}
 
 
 @app.get('/admin/requests', response_model=list[RequestItem])

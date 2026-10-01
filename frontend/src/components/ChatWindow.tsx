@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useRef, useState } from 'react'
 import type { ChatStoreCard } from '../api'
-import { Position, SendOptions, sendMessage } from '../api'
+import { Position, SendOptions, resetChatSession, sendMessage } from '../api'
 import { BotMark } from './BotMark'
 import { ChatMessage, MessageBubble } from './MessageBubble'
 import { ReservationModal } from './ReservationModal'
@@ -177,6 +177,7 @@ export function ChatWindow({
   }
 
   function resetChat() {
+    void resetChatSession(userId)
     setActive(false)
     setMessages([])
     setDraft('')
@@ -260,7 +261,9 @@ export function ChatWindow({
         ) : null}
       </div>
       {waitingApproval ? (
-        <p className="notice">배송지 변경은 관리자 승인 후 이어집니다.</p>
+        <p className="notice">
+          배송지 변경은 관리자 승인 후 이어집니다. 다른 문의를 보내면 그 상담을 이어서 진행합니다.
+        </p>
       ) : null}
       {askOrigin && !sending ? (
         <div className="origin-pick" role="group" aria-label="기준 위치 선택">

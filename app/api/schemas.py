@@ -27,6 +27,10 @@ class ChatResponse(BaseModel):
     ui: dict | None = None
 
 
+class SessionResetRequest(BaseModel):
+    user_id: str = 'U001'
+
+
 class RequestItem(BaseModel):
     request_id: int
     order_id: str

@@ -70,6 +70,17 @@ export async function sendMessage(
   return response.json()
 }
 
+export async function resetChatSession(userId: string) {
+  await fetch(`${API_BASE}/chat/reset`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-User-Id': userId,
+    },
+    body: JSON.stringify({ user_id: userId }),
+  })
+}
+
 export async function fetchNotifications(userId: string) {
   const response = await fetch(`${API_BASE}/notifications/${userId}`)
 
