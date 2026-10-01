@@ -117,6 +117,36 @@ def test_build_chat_ui_hides_order_cards_for_delivery_eta(monkeypatch):
     assert ui is None
 
 
+def test_build_chat_ui_skips_dispute_articles_as_products(monkeypatch):
+    monkeypatch.setattr('app.api.chat_ui.fetch_all', lambda sql: [])
+
+    articles = [
+        {'doc_id': 'ART-09', 'title': '제9조 반환에 필요한 비용', 'content': '반환배송비'},
+        {'doc_id': 'ART-07', 'title': '제7조 공급 및 배송', 'content': '배송 책임'},
+        {'doc_id': 'ART-14', 'title': '제14조 경품류', 'content': '경품 하자'},
+    ]
+
+    spread = build_chat_ui({
+        'messages': [HumanMessage(content='제9조 알려줘')],
+        'last_tool_results': [{
+            'ok': True,
+            'decision': 'POLICY_CITATION',
+            'items': articles,
+        }],
+    })
+    nested = build_chat_ui({
+        'messages': [HumanMessage(content='제9조 알려줘')],
+        'last_tool_results': [{
+            'ok': True,
+            'decision': 'POLICY_CITATION',
+            'dispute': {'ok': True, 'items': articles},
+        }],
+    })
+
+    assert spread is None
+    assert nested is None
+
+
 def test_build_chat_ui_shows_all_cards_for_order_history(monkeypatch):
     monkeypatch.setattr('app.api.chat_ui.fetch_all', lambda sql: [])
 

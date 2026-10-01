@@ -121,7 +121,13 @@ def looks_like_continuation(
     if not step or not text:
         return False
 
-    if any(hint in text for hint in ('규정', '조항', '근거', '청약', '분쟁')):
+    if any(hint in text for hint in (
+        '규정', '조항', '근거', '청약', '분쟁', '배송비', '반환',
+        '왜', '상품정보',
+    )):
+        return True
+
+    if re.search(r'제\s*\d+\s*조', text):
         return True
 
     if step in {'confirm_order', 'confirm_address'}:

@@ -21,6 +21,42 @@ def _order(order_id, status, delivered=None, name='사성 비스포크 제트봇
     }
 
 
+def _patch_cite(monkeypatch, items=None):
+    items = items or []
+    lookup = {item['doc_id']: item for item in items if item.get('doc_id')}
+
+    def _get(doc_id):
+        row = lookup.get(doc_id)
+
+        if not row:
+            return {'ok': False}
+
+        return {'ok': True, **row}
+
+    monkeypatch.setattr(worker4, 'get_dispute_doc', Mock(side_effect=_get))
+    monkeypatch.setattr(worker4, 'search_dispute_docs', Mock(return_value={'ok': True, 'items': items}))
+
+
+ART_08 = {
+    'doc_id': 'ART-08',
+    'title': '제8조 청약철회 기간',
+    'content': '배송 완료일로부터 7일',
+    'doc_ids': ['DOC-025'],
+}
+ART_09 = {
+    'doc_id': 'ART-09',
+    'title': '제9조 반환에 필요한 비용',
+    'content': '반환배송비는 원칙적으로 소비자가 부담한다.',
+    'doc_ids': ['DOC-039'],
+}
+ART_14 = {
+    'doc_id': 'ART-14',
+    'title': '제14조 경품류의 하자등',
+    'content': '경품류의 하자등으로 인한 피해',
+    'doc_ids': ['DOC-080'],
+}
+
+
 def test_pick_order_skips_preparing_same_product():
     preparing = _order('ORD-001', 'PREPARING')
     delivered = _order('ORD-004', 'DELIVERED', date.today().isoformat())
@@ -56,8 +92,8 @@ def test_named_expired_order_is_not_replaced_by_in_window(monkeypatch):
     )
     recent = _order('ORD-004', 'DELIVERED', today.isoformat())
     listed = {'ok': True, 'orders': [_order('ORD-001', 'PREPARING'), recent, expired]}
+    _patch_cite(monkeypatch)
     monkeypatch.setattr(worker4, 'get_orders', Mock(return_value=listed))
-    monkeypatch.setattr(worker4, 'search_dispute_docs', Mock(return_value={'ok': True, 'items': []}))
     monkeypatch.setattr(worker4, 'get_llm', Mock(side_effect=RuntimeError('no llm')))
 
     by_id = worker4.worker4(initial_state(
@@ -97,8 +133,8 @@ def test_named_preparing_order_is_refused_not_swapped(monkeypatch):
             _order('ORD-004', 'DELIVERED', date.today().isoformat()),
         ],
     }
+    _patch_cite(monkeypatch)
     monkeypatch.setattr(worker4, 'get_orders', Mock(return_value=listed))
-    monkeypatch.setattr(worker4, 'search_dispute_docs', Mock(return_value={'ok': True, 'items': []}))
     monkeypatch.setattr(worker4, 'get_llm', Mock(side_effect=RuntimeError('no llm')))
 
     result = worker4.worker4(initial_state(
@@ -125,17 +161,8 @@ def test_named_expired_refund_attaches_article(monkeypatch):
             ),
         ],
     }
-    citation = {
-        'ok': True,
-        'items': [{
-            'doc_id': 'ART-08',
-            'title': '제8조 청약철회 기간',
-            'content': '배송 완료일로부터 7일',
-            'doc_ids': ['DOC-025'],
-        }],
-    }
+    _patch_cite(monkeypatch, [ART_08])
     monkeypatch.setattr(worker4, 'get_orders', Mock(return_value=listed))
-    monkeypatch.setattr(worker4, 'search_dispute_docs', Mock(return_value=citation))
     monkeypatch.setattr(worker4, 'get_llm', Mock(side_effect=RuntimeError('no llm')))
 
     result = worker4.worker4(initial_state(
@@ -150,16 +177,7 @@ def test_named_expired_refund_attaches_article(monkeypatch):
 
 
 def test_policy_question_keeps_confirm_step(monkeypatch):
-    citation = {
-        'ok': True,
-        'items': [{
-            'doc_id': 'ART-08',
-            'title': '제8조 청약철회 기간',
-            'content': '배송 완료일로부터 7일',
-            'doc_ids': ['DOC-025'],
-        }],
-    }
-    monkeypatch.setattr(worker4, 'search_dispute_docs', Mock(return_value=citation))
+    _patch_cite(monkeypatch, [ART_08])
     monkeypatch.setattr(worker4, 'get_llm', Mock(side_effect=RuntimeError('no llm')))
 
     result = worker4.worker4(_pending_refund(initial_state(
@@ -191,8 +209,8 @@ def test_exchange_starts_confirm_on_delivered_order(monkeypatch):
             _order('ORD-005', 'DELIVERED', (today - timedelta(days=60)).isoformat(), name='사성 탭 S10', option='그레이'),
         ],
     }
+    _patch_cite(monkeypatch)
     monkeypatch.setattr(worker4, 'get_orders', Mock(return_value=listed))
-    monkeypatch.setattr(worker4, 'search_dispute_docs', Mock(return_value={'ok': True, 'items': []}))
     monkeypatch.setattr(worker4, 'get_llm', Mock(side_effect=RuntimeError('no llm')))
 
     result = worker4.worker4(initial_state(
@@ -250,6 +268,7 @@ def test_select_method_store_visit_creates_refund(monkeypatch):
     assert '접수를 지점 방문으로 남겼습니다' in result['draft_answer']
     assert '강남역점' in result['draft_answer']
     worker4.create_refund_request.assert_called_once()
+    assert worker4.create_refund_request.call_args.kwargs['reason'] == '색상이 사진과 다릅니다.'
 
 
 def test_window_facts_include_refusal_evidence():
@@ -287,6 +306,10 @@ def test_dispute_query_prefers_withdrawal_window():
     ]
 
     assert worker4._prefer_dispute_item(items, 'RETURN_WINDOW_EXPIRED')['doc_id'] == 'ART-08'
+    assert worker4._prefer_dispute_item(
+        [{'doc_id': 'ART-07', 'title': '제7조 공급 및 배송', 'content': '배송 책임'}],
+        'RETURN_WINDOW_EXPIRED',
+    ) is None
 
 
 def test_expired_order_refuses_with_evidence(monkeypatch):
@@ -297,17 +320,8 @@ def test_expired_order_refuses_with_evidence(monkeypatch):
             _order('ORD-005', 'DELIVERED', (date.today() - timedelta(days=9)).isoformat(), name='사성 탭 S10'),
         ],
     }
-    citation = {
-        'ok': True,
-        'items': [{
-            'doc_id': 'ART-08',
-            'title': '제8조 청약철회 기간',
-            'content': '배송 완료일로부터 7일',
-            'doc_ids': ['DOC-025'],
-        }],
-    }
+    _patch_cite(monkeypatch, [ART_08])
     monkeypatch.setattr(worker4, 'get_orders', Mock(return_value=listed))
-    monkeypatch.setattr(worker4, 'search_dispute_docs', Mock(return_value=citation))
     monkeypatch.setattr(worker4, 'get_llm', Mock(side_effect=RuntimeError('no llm')))
 
     result = worker4.worker4(initial_state(
@@ -324,16 +338,7 @@ def test_expired_order_refuses_with_evidence(monkeypatch):
 
 
 def test_policy_followup_does_not_start_confirm(monkeypatch):
-    citation = {
-        'ok': True,
-        'items': [{
-            'doc_id': 'ART-08',
-            'title': '제8조 청약철회 기간',
-            'content': '배송 완료일로부터 7일',
-            'doc_ids': ['DOC-025'],
-        }],
-    }
-    monkeypatch.setattr(worker4, 'search_dispute_docs', Mock(return_value=citation))
+    _patch_cite(monkeypatch, [ART_08])
     monkeypatch.setattr(worker4, 'get_orders', Mock(side_effect=AssertionError('should not list orders')))
     monkeypatch.setattr(worker4, 'get_llm', Mock(side_effect=RuntimeError('no llm')))
 
@@ -348,4 +353,137 @@ def test_policy_followup_does_not_start_confirm(monkeypatch):
     assert result['step'] is None
     assert 'ART-08' in result['draft_answer']
     assert '맞습니까' not in (result['draft_answer'] or '')
+
+
+def test_shipping_cost_question_cites_art09_not_confirm(monkeypatch):
+    _patch_cite(monkeypatch, [ART_09])
+    monkeypatch.setattr(worker4, 'get_orders', Mock(side_effect=AssertionError('should not list orders')))
+    monkeypatch.setattr(worker4, 'get_llm', Mock(side_effect=RuntimeError('no llm')))
+
+    result = worker4.worker4(initial_state(
+        'U001',
+        HumanMessage(content='반환 비용 부담이 어떻게 되나요?'),
+    ))
+    payload = result['tool_results'][-1]
+
+    assert result['step'] is None
+    assert 'ART-09' in result['draft_answer']
+    assert '고객' in result['draft_answer']
+    assert '맞습니까' not in result['draft_answer']
+    assert 'ART-07' not in result['draft_answer']
+    assert payload['decision'] == 'POLICY_CITATION'
+    assert 'items' not in payload
+    assert payload['dispute']['items'][0]['doc_id'] == 'ART-09'
+
+
+def test_article_nine_followup_cites_art09(monkeypatch):
+    _patch_cite(monkeypatch, [ART_14, ART_09])
+    monkeypatch.setattr(worker4, 'get_llm', Mock(side_effect=RuntimeError('no llm')))
+
+    result = worker4.worker4(_pending_refund(initial_state(
+        'U001',
+        HumanMessage(content='환불 규정과 관련해서 제 9조의 정보를 알고 싶습니다'),
+    )))
+    payload = result['tool_results'][-1]
+
+    assert result['step'] == 'confirm_order'
+    assert 'ART-09' in result['draft_answer']
+    assert 'ART-14' not in result['draft_answer']
+    assert 'items' not in payload
+    assert payload['decision'] == 'POLICY_CITATION'
+
+
+def test_why_product_cards_explains_and_keeps_confirm(monkeypatch):
+    monkeypatch.setattr(worker4, 'get_llm', Mock(side_effect=RuntimeError('no llm')))
+
+    result = worker4.worker4(_pending_refund(initial_state(
+        'U001',
+        HumanMessage(content='상품정보 보기가 왜 나와?'),
+    )))
+
+    assert result['step'] == 'confirm_order'
+    assert '상품 카드' in result['draft_answer']
+    assert '네' in result['draft_answer']
+
+
+def test_prefer_shipping_cost_article():
+    items = [ART_14, ART_09]
+
+    assert worker4._prefer_dispute_item(items, 'SHIPPING_COST')['doc_id'] == 'ART-09'
+    assert worker4._article_code('제 9조의 정보를 알고 싶습니다') == 'ART-09'
+    assert worker4._policy_only('반환 비용 부담이 어떻게 되나요?')
+    assert worker4._policy_only('반품 배송비는 누가 내나요?')
+    assert not worker4._policy_only('환불하고 싶어요')
+
+
+def test_return_shipping_fee_question_answers_art09(monkeypatch):
+    _patch_cite(monkeypatch, [ART_09, ART_14])
+    monkeypatch.setattr(worker4, 'get_orders', Mock(side_effect=AssertionError('should not list orders')))
+    monkeypatch.setattr(worker4, 'get_llm', Mock(side_effect=RuntimeError('no llm')))
+
+    result = worker4.worker4(initial_state(
+        'U001',
+        HumanMessage(content='반품 배송비는 누가 내나요?'),
+    ))
+
+    assert result['step'] is None
+    assert 'ART-09' in result['draft_answer']
+    assert 'ART-07' not in result['draft_answer']
+    assert 'ART-14' not in result['draft_answer']
+    assert '맞습니까' not in result['draft_answer']
+    assert '부담' in result['draft_answer']
+
+
+def test_generic_policy_cites_window_and_shipping(monkeypatch):
+    _patch_cite(monkeypatch, [ART_08, ART_09, ART_14])
+    monkeypatch.setattr(worker4, 'get_orders', Mock(side_effect=AssertionError('should not list orders')))
+    monkeypatch.setattr(worker4, 'get_llm', Mock(side_effect=RuntimeError('no llm')))
+
+    result = worker4.worker4(initial_state(
+        'U001',
+        HumanMessage(content='관련 규정이 어떻게 되는데?'),
+    ))
+
+    assert result['step'] is None
+    assert 'ART-08' in result['draft_answer']
+    assert 'ART-09' in result['draft_answer']
+    assert 'ART-14' not in result['draft_answer']
+    assert '맞습니까' not in result['draft_answer']
+
+
+def test_citation_excerpt_is_short():
+    long_item = {
+        'doc_id': 'ART-08',
+        'title': '제8조 청약철회 기간',
+        'doc_ids': ['DOC-025'],
+        'content': ('배송 완료일로부터 7일. ' + ('기타 제한 사유입니다. ' * 40)),
+    }
+    note = worker4._format_citation(long_item)
+
+    assert 'ART-08' in note
+    assert '7일' in note
+    assert len(note) < 280
+
+
+def test_store_visit_duplicate_pending_keeps_existing(monkeypatch):
+    created = {
+        'ok': True,
+        'request_id': 11,
+        'status': 'PENDING',
+        'already_pending': True,
+        'message': '이미 같은 주문의 환불 요청이 접수되어 승인 대기 중입니다.',
+    }
+    monkeypatch.setattr(worker4, 'get_llm', Mock(side_effect=RuntimeError('no llm')))
+    monkeypatch.setattr(worker4, 'create_refund_request', Mock(return_value=created))
+    monkeypatch.setattr(worker4, 'find_nearest_stores', Mock(side_effect=AssertionError('no geo')))
+
+    result = worker4.worker4(_pending_refund(
+        initial_state('U001', HumanMessage(content='지점 방문할게요')),
+        'select_method',
+    ))
+
+    assert result['step'] is None
+    assert '이미' in result['draft_answer']
+    assert '남겼습니다' not in result['draft_answer']
+    assert worker4.create_refund_request.call_args.kwargs['reason'] == '색상이 사진과 다릅니다.'
 

@@ -112,6 +112,32 @@ def _create_return_request(
     if method == 'PICKUP' and not pickup_address:
         return fail('INVALID_ADDRESS', '수거 주소가 필요합니다.')
 
+    existing = fetch_one(
+        '''
+        SELECT request_id, status, method
+        FROM requests
+        WHERE order_id = %s
+          AND user_id = %s
+          AND request_type = %s
+          AND status = 'PENDING'
+        ORDER BY request_id DESC
+        LIMIT 1
+        ''',
+        (order_id, user_id, request_type)
+    )
+
+    if existing:
+        label = '교환' if request_type == 'EXCHANGE' else '환불'
+        return {
+            'ok': True,
+            'request_id': existing['request_id'],
+            'status': 'PENDING',
+            'request_type': request_type,
+            'method': existing.get('method') or method,
+            'already_pending': True,
+            'message': f'이미 같은 주문의 {label} 요청이 접수되어 승인 대기 중입니다.',
+        }
+
     request_id = execute(
         '''
         INSERT INTO requests (

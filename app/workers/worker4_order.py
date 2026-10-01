@@ -22,7 +22,7 @@ from app.graph.confirm import (
 )
 from app.graph.state import State
 from app.llm import get_llm, llm_text
-from app.tools.dispute_tools import search_dispute_docs
+from app.tools.dispute_tools import get_dispute_doc, search_dispute_docs
 from app.tools.order_tools import get_orders
 from app.tools.request_tools import (
     RETURN_WINDOW_DAYS,
@@ -38,7 +38,10 @@ DISPUTE_HINTS = (
 )
 POLICY_ONLY_HINTS = ('규정', '조항', '근거', '분쟁해결', '청약철회')
 REQUEST_HINTS = ('교환', '환불', '반품')
-SHIPPING_HINTS = ('배송비', '누가 내', '비용 부담', '반환 비용')
+ACTION_HINTS = ('하고 싶', '해주세요', '부탁', '접수', '하는데')
+SHIPPING_HINTS = ('배송비', '누가 내', '비용 부담', '반환 비용', '반환배송')
+ASK_HINTS = ('어떻게', '알고 싶', '알려', '관련')
+ARTICLE_NUM_RE = re.compile(r'제\s*(\d+)\s*조')
 ORDER_ID_RE = re.compile(r'ORD-\d+', re.I)
 ARTICLE_MARK = '[관련 규정'
 LOCKED_DRAFT = (
@@ -397,68 +400,151 @@ def _window_facts(
     }
 
 
+def _article_code(
+        text: str
+) -> str | None:
+    match = ARTICLE_NUM_RE.search(text or '')
+
+    if not match:
+        return None
+
+    return f'ART-{int(match.group(1)):02d}'
+
+
 def _policy_only(
         text: str
 ) -> bool:
-    return any(hint in text for hint in POLICY_ONLY_HINTS) and not any(
-        hint in text for hint in REQUEST_HINTS
-    )
+    asking = _is_policy_question(text)
+    acting = any(hint in text for hint in ACTION_HINTS)
+
+    if _article_code(text) and not acting:
+        return True
+
+    return asking and not acting
 
 
 def _situation_from_tools(
         results: list | None
 ) -> str | None:
     for item in results or []:
-        if isinstance(item, dict) and item.get('decision'):
-            return item['decision']
+        if not isinstance(item, dict):
+            continue
+
+        decision = item.get('decision')
+
+        if decision and decision != 'POLICY_CITATION':
+            return decision
 
     return None
+
+
+def _situation_for_cite(
+        text: str,
+        fallback: str | None = None
+) -> str | None:
+    blob = text or ''
+
+    if _article_code(blob):
+        return 'ARTICLE'
+
+    if any(hint in blob for hint in SHIPPING_HINTS):
+        return 'SHIPPING_COST'
+
+    if any(hint in blob for hint in POLICY_ONLY_HINTS):
+        return 'POLICY_OVERVIEW'
+
+    if any(hint in blob for hint in REQUEST_HINTS) and any(
+        hint in blob for hint in ASK_HINTS
+    ):
+        return 'POLICY_OVERVIEW'
+
+    return fallback
+
+
+def _wanted_articles(
+        text: str,
+        situation: str | None,
+        article: str | None = None
+) -> list[str]:
+    if article:
+        return [article]
+
+    if situation == 'SHIPPING_COST':
+        return ['ART-09']
+
+    if situation in {'RETURN_WINDOW_EXPIRED', 'WITHIN_WINDOW', 'NOT_DELIVERED'}:
+        return ['ART-08']
+
+    if situation == 'POLICY_OVERVIEW':
+        return ['ART-08', 'ART-09']
+
+    return []
 
 
 def _dispute_query(
         text: str,
         situation: str | None = None
 ) -> str:
-    if situation == 'RETURN_WINDOW_EXPIRED' or situation == 'WITHIN_WINDOW':
-        return '청약철회 기간 배송 완료일로부터 7일'
+    article = _article_code(text)
 
-    if situation == 'NOT_DELIVERED':
-        return '재화 공급 시작 전 주문 취소'
+    if article:
+        number = int(article.split('-')[1])
+        return f'제{number}조'
 
-    if situation == 'SHIPPING_COST' or any(hint in (text or '') for hint in SHIPPING_HINTS):
-        return '반환 비용 부담 배송비'
+    if situation == 'SHIPPING_COST':
+        return '제9조 반환에 필요한 비용 부담'
 
-    if any(hint in (text or '') for hint in ('색상', '하자', '다르', '잘못')):
-        return '표시 광고와 다른 재화 청약철회'
+    if situation in {'RETURN_WINDOW_EXPIRED', 'WITHIN_WINDOW', 'NOT_DELIVERED'}:
+        return '제8조 청약철회 기간'
 
-    if any(hint in (text or '') for hint in POLICY_ONLY_HINTS):
-        return '청약철회 기간 및 제한'
+    if situation == 'POLICY_OVERVIEW':
+        return '제8조 청약철회 기간 제9조 반환 비용'
 
-    return (text or '').strip()
+    return ''
 
 
 def _prefer_dispute_item(
         items: list,
-        situation: str | None
+        situation: str | None,
+        article: str | None = None
 ) -> dict | None:
+    wanted = (_wanted_articles('', situation, article) or [None])[0]
+
     if not items:
         return None
 
-    if situation in {'RETURN_WINDOW_EXPIRED', 'WITHIN_WINDOW'}:
+    if wanted:
         for item in items:
-            blob = f"{item.get('doc_id')} {item.get('title')} {item.get('content')}"
-
-            if 'ART-08' in blob or '청약철회 기간' in blob:
+            if item.get('doc_id') == wanted:
                 return item
 
-    if situation == 'SHIPPING_COST':
-        for item in items:
-            blob = f"{item.get('doc_id')} {item.get('title')}"
+            number = wanted.split('-')[-1].lstrip('0') or '0'
 
-            if 'ART-09' in blob or '반환에 필요한 비용' in blob:
+            if f'제{number}조' in str(item.get('title') or ''):
                 return item
 
-    return items[0]
+        return None
+
+    return None
+
+
+def _excerpt(
+        content: str,
+        needles: tuple[str, ...] = (),
+        limit: int = 180
+) -> str:
+    sentences = [
+        part.strip()
+        for part in re.split(r'(?<=다\.)\s*', content or '')
+        if part.strip()
+    ]
+    picked = [part for part in sentences if any(needle in part for needle in needles)]
+    text = ' '.join((picked or sentences)[:2])
+
+    if len(text) > limit:
+        return text[:limit].rstrip() + '…'
+
+    return text
 
 
 def _format_citation(
@@ -466,44 +552,114 @@ def _format_citation(
 ) -> str:
     source_ids = item.get('doc_ids') or []
     cited = source_ids[0] if source_ids else item.get('doc_id')
+    needles = {
+        'ART-08': ('배송 완료일', '7일', '공급받은 날'),
+        'ART-09': ('소비자가 부담', '판매자가 부담', '결함 또는 하자'),
+    }.get(item.get('doc_id') or '', ())
 
     return (
         f"\n\n[관련 규정 {item.get('doc_id')} / 근거 {cited}]\n"
         f"{item.get('title') or ''}\n"
-        f"{item.get('content') or ''}"
+        f"{_excerpt(item.get('content') or '', needles)}"
     )
+
+
+def _policy_lead(
+        situation: str | None,
+        items: list | None
+) -> str:
+    ids = {item.get('doc_id') for item in items or []}
+
+    if situation == 'SHIPPING_COST' or ids == {'ART-09'}:
+        return (
+            '반품 배송비는 단순 변심이면 고객이 부담하고, '
+            '상품 하자·오배송·파손이면 판매자가 부담합니다.'
+        )
+
+    if situation == 'RETURN_WINDOW_EXPIRED':
+        return '배송 완료일로부터 7일이 지나면 청약철회(교환·환불)가 어렵습니다.'
+
+    if situation == 'NOT_DELIVERED':
+        return '배송이 시작되기 전에는 주문을 취소할 수 있습니다. 수령 전에는 교환·환불을 접수할 수 없습니다.'
+
+    if 'ART-08' in ids and 'ART-09' in ids:
+        return (
+            '배송 완료일로부터 7일 이내에 청약철회(교환·환불)할 수 있습니다. '
+            '반품 배송비는 단순 변심이면 고객 부담, 하자·오배송이면 판매자 부담입니다.'
+        )
+
+    if 'ART-08' in ids:
+        return '배송 완료일로부터 7일 이내에 청약철회(교환·환불)할 수 있습니다.'
+
+    return ''
 
 
 def _search_dispute(
         query: str,
-        situation: str | None = None
+        situation: str | None = None,
+        article: str | None = None
 ) -> tuple[str, dict | None]:
-    found = search_dispute_docs(query)
+    wanted_ids = _wanted_articles(query, situation, article)
+    items = []
+
+    for doc_id in wanted_ids:
+        direct = get_dispute_doc(doc_id)
+
+        if direct.get('ok'):
+            items.append(direct)
+
+    if items:
+        note = ''.join(_format_citation(item) for item in items)
+        return note, {'ok': True, 'items': items}
+
+    if not wanted_ids:
+        return '', None
+
+    found = search_dispute_docs(query or '청약철회')
 
     if not found.get('ok'):
         return '', found
 
-    top = _prefer_dispute_item(found.get('items') or [], situation)
+    picked = []
 
-    if not top:
-        return '', found
+    for doc_id in wanted_ids:
+        top = _prefer_dispute_item(found.get('items') or [], situation, doc_id)
 
-    return _format_citation(top), found
+        if top and top.get('doc_id') not in {item.get('doc_id') for item in picked}:
+            picked.append(top)
+
+    if not picked:
+        return '', {'ok': True, 'items': []}
+
+    note = ''.join(_format_citation(item) for item in picked)
+    return note, {'ok': True, 'items': picked}
 
 
 def _cite_for(
         text: str,
         situation: str | None = None
 ) -> tuple[str, dict | None]:
+    situation = _situation_for_cite(text, situation)
+    article = _article_code(text)
     query = _dispute_query(text, situation)
+    wanted = _wanted_articles(text, situation, article)
 
-    if not query:
+    if not wanted:
         return '', None
 
-    if situation or any(hint in text for hint in DISPUTE_HINTS + POLICY_ONLY_HINTS):
-        return _search_dispute(query, situation)
+    return _search_dispute(query, situation, article)
 
-    return '', None
+
+def _saved_reason(
+        pending: dict,
+        text: str
+) -> str:
+    stored = (pending.get('reason') or '').strip()
+
+    if stored:
+        return stored
+
+    return (text or '').strip()
 
 
 def _finish_refuse(
@@ -522,10 +678,25 @@ def _finish_refuse(
     return finished(state, 'worker4', _with_citation(draft, note), merged)
 
 
+def _is_ui_complaint(
+        text: str
+) -> bool:
+    blob = text or ''
+
+    return any(word in blob for word in ('상품정보', '재고 개', '카드')) and any(
+        word in blob for word in ('왜', '나와', '뜨')
+    )
+
+
 def _is_policy_question(
         text: str
 ) -> bool:
-    return any(hint in (text or '') for hint in POLICY_ONLY_HINTS)
+    if _is_ui_complaint(text):
+        return False
+
+    return bool(_article_code(text)) or any(
+        hint in (text or '') for hint in POLICY_ONLY_HINTS + SHIPPING_HINTS + ASK_HINTS
+    )
 
 
 def _policy_follow_prompt(
@@ -592,21 +763,35 @@ def worker4(
     step = state.get('step')
 
     if _is_policy_question(text) and (step or _policy_only(text)):
-        situation = _situation_from_tools(
-            state.get('tool_results') or state.get('last_tool_results')
+        situation = _situation_for_cite(
+            text,
+            _situation_from_tools(
+                state.get('tool_results') or state.get('last_tool_results')
+            ),
         )
         note, found = _cite_for(text, situation)
-        payload = dict(found or {'ok': False, 'message': '관련 규정을 찾지 못했습니다.'})
-        payload['decision'] = 'POLICY_CITATION'
+        items = (found or {}).get('items') or []
+        payload = {
+            'ok': bool(found and found.get('ok')),
+            'decision': 'POLICY_CITATION',
+            'dispute': found,
+        }
+        lead = _policy_lead(situation, items)
         extra = note or '\n관련 규정을 찾지 못했습니다.'
+        body = f'{lead}{extra}' if lead else f'관련 규정은 아래와 같습니다.{extra}'
         label = '환불' if (pending.get('request_type') or _request_type(text, pending)) == 'REFUND' else '교환'
 
         if step:
-            draft = f'관련 규정은 아래와 같습니다.{extra}\n\n{_policy_follow_prompt(step, label)}'
-            return waiting(state, 'worker4', step, draft, pending, payload)
+            return waiting(
+                state,
+                'worker4',
+                step,
+                f'{body}\n\n{_policy_follow_prompt(step, label)}',
+                pending,
+                payload,
+            )
 
-        draft = f'관련 규정은 아래와 같습니다.{extra}' if note else '관련 규정을 찾지 못했습니다.'
-        return finished(state, 'worker4', draft, payload)
+        return finished(state, 'worker4', body, payload)
 
     request_type = _request_type(text, pending)
     label = '환불' if request_type == 'REFUND' else '교환'
@@ -661,16 +846,11 @@ def worker4(
             pending['order_id'] = order['order_id']
             pending['shown_address'] = order['ship_address']
             pending['order_summary'] = f"{order['product_name']} / {order.get('option') or '-'}"
-            pending['reason'] = text
+            pending['reason'] = pending.get('reason') or text
             draft = build_confirm_message(
                 f'아래 {label} 신청 정보가 맞습니까?',
                 _confirm_fields(order, request_type),
             )
-            note, found = _cite_for(text, 'WITHIN_WINDOW')
-            draft = _with_citation(draft, note)
-
-            if found is not None:
-                payload = {**payload, 'dispute': found}
 
             return waiting(state, 'worker4', 'confirm_order', draft, pending, payload)
 
@@ -685,7 +865,7 @@ def worker4(
             )
 
         pending['order_options'] = window
-        pending['reason'] = text
+        pending['reason'] = pending.get('reason') or text
         listed_window = {**payload, 'orders': window}
         return waiting(
             state,
@@ -727,11 +907,16 @@ def worker4(
                 {**listed, 'orders': options},
             )
 
+        hint = ''
+
+        if any(word in text for word in ('상품정보', '재고', '카드', '왜')):
+            hint = '규정 안내와 상품 카드는 별개입니다. 지금은 환불·교환 신청 내용을 확인하고 있습니다.\n\n'
+
         return waiting(
             state,
             'worker4',
             'confirm_order',
-            '주문 정보가 맞으면 "네", 아니면 "아니요"라고 답해 주세요.',
+            f'{hint}주문 정보가 맞으면 "네", 아니면 "아니요"라고 답해 주세요.',
             pending,
         )
 
@@ -784,14 +969,20 @@ def worker4(
 
         pending['order_id'] = chosen['order_id']
         pending['shown_address'] = chosen['ship_address']
+        pending['reason'] = pending.get('reason') or text
         draft = build_confirm_message(
             f'아래 {label} 신청 정보가 맞습니까?',
             _confirm_fields(chosen, request_type),
         )
-        note, found = _cite_for(pending.get('reason') or text, 'WITHIN_WINDOW')
-        draft = _with_citation(draft, note)
 
-        return waiting(state, 'worker4', 'confirm_order', draft, pending, found)
+        return waiting(
+            state,
+            'worker4',
+            'confirm_order',
+            draft,
+            pending,
+            {'ok': True, 'orders': [chosen]},
+        )
 
     if step == 'select_method':
         method = _parse_method(text)
@@ -802,11 +993,19 @@ def worker4(
                 pending['order_id'],
                 state['user_id'],
                 'STORE_VISIT',
-                reason=text,
+                reason=_saved_reason(pending, text),
             )
 
             if not created.get('ok'):
                 return finished(state, 'worker4', created.get('message') or '접수하지 못했습니다.', created)
+
+            if created.get('already_pending'):
+                return finished(
+                    state,
+                    'worker4',
+                    created.get('message') or f'이미 같은 주문의 {label} 요청이 승인 대기 중입니다.',
+                    created,
+                )
 
             guide, geo = _store_guide(state['user_id'])
             extra = f'\n{guide}' if guide else '\n가까운 지점은 지점 문의로 다시 확인해 주세요.'
@@ -849,7 +1048,7 @@ def worker4(
                 state['user_id'],
                 'PICKUP',
                 pickup_address=pending.get('shown_address'),
-                reason=text,
+                reason=_saved_reason(pending, text),
             )
 
             if not created.get('ok'):
@@ -857,6 +1056,14 @@ def worker4(
                     state,
                     'worker4',
                     created.get('message', '접수하지 못했습니다.'),
+                    created,
+                )
+
+            if created.get('already_pending'):
+                return finished(
+                    state,
+                    'worker4',
+                    created.get('message') or f'이미 같은 주문의 {label} 요청이 승인 대기 중입니다.',
                     created,
                 )
 
@@ -891,7 +1098,7 @@ def worker4(
             state['user_id'],
             'PICKUP',
             pickup_address=text.strip(),
-            reason=pending.get('reason'),
+            reason=_saved_reason(pending, text),
         )
 
         if not created.get('ok'):
@@ -899,6 +1106,14 @@ def worker4(
                 state,
                 'worker4',
                 created.get('message', '접수하지 못했습니다.'),
+                created,
+            )
+
+        if created.get('already_pending'):
+            return finished(
+                state,
+                'worker4',
+                created.get('message') or f'이미 같은 주문의 {label} 요청이 승인 대기 중입니다.',
                 created,
             )
 

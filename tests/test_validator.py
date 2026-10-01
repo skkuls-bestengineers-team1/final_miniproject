@@ -66,3 +66,23 @@ def test_window_refusal_passes_without_llm():
     })
 
     assert result['validation']['pass'] is True
+
+
+def test_policy_citation_passes_without_llm():
+    result = validator({
+        'messages': [HumanMessage(content='반환 비용 부담이 어떻게 되나요?')],
+        'draft_answer': '관련 규정은 아래와 같습니다.\n\n[관련 규정 ART-09 / 근거 DOC-039]\n제9조 반환에 필요한 비용',
+        'tool_results': [{
+            'ok': True,
+            'decision': 'POLICY_CITATION',
+            'dispute': {'ok': True, 'items': [{'doc_id': 'ART-09'}]},
+        }],
+        'current_worker': 'worker4',
+        'step': None,
+        'retry_count': 0,
+        'validation': None,
+        'user_id': 'U001',
+        'pending_data': {},
+    })
+
+    assert result['validation']['pass'] is True
