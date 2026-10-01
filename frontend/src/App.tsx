@@ -84,10 +84,10 @@ export default function App() {
             </button>
           </article>
           <article>
-            <h3>배송·교환·환불도 이어서 진행할 수 있어요</h3>
-            <p>배송 상태, 배송지 변경, 교환·환불과 분쟁해결기준을 같은 창에서 이어갑니다.</p>
-            <button type="button" onClick={() => setSeedPrompt(QUICK_PROMPTS[5])}>
-              {QUICK_PROMPTS[5]}
+            <h3>주문 내역과 배송·교환도 이어서 진행할 수 있어요</h3>
+            <p>주문 카드에서 상태·배송지를 확인하고, 교환·환불도 같은 창에서 이어갑니다.</p>
+            <button type="button" onClick={() => setSeedPrompt(QUICK_PROMPTS[2])}>
+              {QUICK_PROMPTS[2]}
             </button>
           </article>
         </div>

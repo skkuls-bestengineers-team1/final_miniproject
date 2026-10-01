@@ -1,4 +1,5 @@
 import type { ChatUi } from '../api'
+import { OrderCards } from './OrderCards'
 import { ProductCards } from './ProductCards'
 
 export type ChatMessage = {
@@ -25,6 +26,7 @@ export function MessageBubble({ message, onReserve }: MessageBubbleProps) {
 
   const stores = message.ui?.stores || []
   const products = message.ui?.products || []
+  const orders = message.ui?.orders || []
 
   return (
     <div className="row bot">
@@ -51,6 +53,7 @@ export function MessageBubble({ message, onReserve }: MessageBubbleProps) {
           </div>
         ) : null}
         {products.length ? <ProductCards products={products} /> : null}
+        {orders.length ? <OrderCards orders={orders} /> : null}
         {message.time ? <time>{message.time}</time> : null}
       </div>
     </div>

@@ -292,14 +292,16 @@ select {
 }
 
 .store-list,
-.product-grid {
+.product-grid,
+.order-list {
   display: grid;
   gap: 10px;
   margin-top: 10px;
 }
 
 .store-card,
-.product-card {
+.product-card,
+.order-card {
   display: grid;
   grid-template-columns: 88px 1fr;
   gap: 10px;
@@ -312,6 +314,7 @@ select {
 
 .store-card img,
 .product-card img,
+.order-card img,
 .modal-photo {
   width: 100%;
   height: 88px;
@@ -319,12 +322,14 @@ select {
 }
 
 .store-card div,
-.product-card div {
+.product-card div,
+.order-card div {
   padding: 8px 10px 10px 0;
 }
 
 .store-card p,
 .product-card p,
+.order-card p,
 .modal-meta span {
   margin: 2px 0;
   color: #667;
@@ -333,6 +338,7 @@ select {
 
 .store-card button,
 .product-card button,
+.order-card button,
 .reserve-form button {
   margin-top: 6px;
   border: 0;
@@ -341,6 +347,35 @@ select {
   background: var(--accent);
   color: #fff;
   cursor: pointer;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  margin-bottom: 4px;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #1849a9;
+  background: #eff4ff;
+}
+
+.status-PREPARING {
+  color: #854d0e;
+  background: #fef7c3;
+}
+
+.status-SHIPPED,
+.status-IN_TRANSIT {
+  color: #1e40af;
+  background: #dbeafe;
+}
+
+.status-DELIVERED {
+  color: #166534;
+  background: #dcfce7;
 }
 
 .modal-back {

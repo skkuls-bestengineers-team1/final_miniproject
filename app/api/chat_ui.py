@@ -1,9 +1,9 @@
-'''채팅 화면에 붙일 지점·상품 카드.
+'''채팅 화면에 붙일 지점·상품·주문 카드.
 
 검증은 Tool 결과만 본다. 카드는 last_tool_results를 읽는다.
 '''
 
-from app.db.codes import CATEGORY_LABEL
+from app.db.codes import CATEGORY_LABEL, DELIVERY_STATUS_LABEL
 from app.db.connection import fetch_all
 
 STORE_PHOTOS = {
@@ -50,6 +50,49 @@ def _store_rows() -> dict:
     return {row['name']: row for row in rows}
 
 
+def _iso_date(value) -> str:
+    if value is None:
+        return ''
+
+    if hasattr(value, 'isoformat'):
+        return str(value.isoformat())[:10]
+
+    return str(value)[:10]
+
+
+def _photo_url(product_code: str, category_code: str) -> str:
+    return PRODUCT_CODE_PHOTOS.get(product_code) or PRODUCT_PHOTOS.get(
+        category_code, PRODUCT_PHOTOS['ROBOT_CLEANER']
+    )
+
+
+def _order_card(item: dict) -> dict | None:
+    order_id = item.get('order_id')
+
+    if not order_id:
+        return None
+
+    status = item.get('delivery_status') or ''
+    product_code = item.get('product_code') or ''
+    category = item.get('category_code') or ''
+    price = item.get('price')
+
+    return {
+        'order_id': order_id,
+        'product_name': item.get('product_name') or '',
+        'product_code': product_code,
+        'option': item.get('option') or '',
+        'order_date': _iso_date(item.get('order_date')),
+        'expected_date': _iso_date(item.get('expected_date')),
+        'delivered_date': _iso_date(item.get('delivered_date')),
+        'delivery_status': status,
+        'delivery_status_label': item.get('delivery_status_label') or DELIVERY_STATUS_LABEL.get(status, status),
+        'ship_address': item.get('ship_address') or '',
+        'price': int(price) if price is not None else None,
+        'photo_url': _photo_url(product_code, category),
+    }
+
+
 def build_chat_ui(
         values: dict | None
 ) -> dict | None:
@@ -59,6 +102,7 @@ def build_chat_ui(
         return None
     stores: list[dict] = []
     products: list[dict] = []
+    orders: dict[str, dict] = {}
 
     try:
         catalog = _store_rows() if results else {}
@@ -94,15 +138,28 @@ def build_chat_ui(
                 'category': CATEGORY_LABEL.get(code, code),
                 'quantity': item.get('quantity'),
                 'price': item.get('price'),
-                'photo_url': PRODUCT_CODE_PHOTOS.get(product_code) or PRODUCT_PHOTOS.get(
-                    code, PRODUCT_PHOTOS['ROBOT_CLEANER']
-                ),
+                'photo_url': _photo_url(product_code, code),
             })
 
-    if not stores and not products:
+        for item in payload.get('orders') or []:
+            card = _order_card(item)
+
+            if card:
+                orders[card['order_id']] = card
+
+        if payload.get('order_id') and payload.get('product_name'):
+            card = _order_card(payload)
+
+            if card:
+                previous = orders.get(card['order_id']) or {}
+                merged = {**previous, **{key: value for key, value in card.items() if value}}
+                orders[card['order_id']] = merged
+
+    if not stores and not products and not orders:
         return None
 
     return {
         'stores': stores,
         'products': products,
+        'orders': list(orders.values()),
     }

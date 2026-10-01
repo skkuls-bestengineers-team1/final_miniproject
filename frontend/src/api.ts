@@ -18,9 +18,25 @@ export type ChatProductCard = {
   photo_url: string
 }
 
+export type ChatOrderCard = {
+  order_id: string
+  product_name: string
+  product_code: string
+  option: string
+  order_date: string
+  expected_date: string
+  delivered_date: string
+  delivery_status: string
+  delivery_status_label: string
+  ship_address: string
+  price: number | null
+  photo_url: string
+}
+
 export type ChatUi = {
   stores?: ChatStoreCard[]
   products?: ChatProductCard[]
+  orders?: ChatOrderCard[]
 }
 
 export type ChatResponse = {

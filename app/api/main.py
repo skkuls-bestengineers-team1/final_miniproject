@@ -139,6 +139,16 @@ def _graph_snapshot(
         return None
 
 
+def _address_change_pending(
+        values: dict | None
+) -> bool:
+    for item in (values or {}).get('last_tool_results') or []:
+        if isinstance(item, dict) and item.get('ok') and item.get('status') == 'PENDING':
+            return True
+
+    return False
+
+
 def _last_ai_text(messages) -> str:
     for message in reversed(messages or []):
         if getattr(message, 'type', None) != 'ai':
@@ -195,6 +205,8 @@ def chat(
     snapshot = _graph_snapshot(compiled, config)
     paused = _interrupt_payload(snapshot) if snapshot else None
 
+    values = (snapshot.values if snapshot else None) or {}
+
     if paused:
         return ChatResponse(
             answer=paused.get('draft') or '관리자 승인을 기다리고 있습니다.',
@@ -203,9 +215,9 @@ def chat(
 
     return ChatResponse(
         answer=_last_ai_text(result.get('messages')),
-        waiting_approval=False,
-        ask_search_origin=(snapshot.values or {}).get('step') == 'ask_search_origin' if snapshot else False,
-        ui=build_chat_ui((snapshot.values if snapshot else None) or {}),
+        waiting_approval=_address_change_pending(values),
+        ask_search_origin=values.get('step') == 'ask_search_origin',
+        ui=build_chat_ui(values),
     )
 
 
@@ -242,28 +254,33 @@ def _resume(
         request_id: int,
         approved: bool
 ) -> AdminActionResponse:
-    _require_graph()
+    compiled = _require_graph()
     status = 'DONE' if approved else 'REJECTED'
     updated = mark_request_status(request_id, status)
 
     if not updated.get('ok'):
         raise HTTPException(status_code=404, detail=updated.get('message'))
 
+    # 새 worker3는 interrupt를 쓰지 않는다. 예전 세션만 그래프를 재개한다.
+    config = _config(updated['user_id'])
+    snapshot = _graph_snapshot(compiled, config)
+    paused = _interrupt_payload(snapshot) if snapshot else None
     resumed = False
     detail = ''
 
-    try:
-        graph.invoke(
-            Command(resume={
-                'approved': approved,
-                'request_id': request_id,
-            }),
-            _config(updated['user_id']),
-        )
-        resumed = True
+    if paused:
+        try:
+            compiled.invoke(
+                Command(resume={
+                    'approved': approved,
+                    'request_id': request_id,
+                }),
+                config,
+            )
+            resumed = True
 
-    except Exception as exc:
-        detail = str(exc)
+        except Exception as exc:
+            detail = str(exc)
 
     return AdminActionResponse(
         ok=True,
@@ -298,7 +315,7 @@ def notifications(
         '''
         SELECT request_id, request_type, status
         FROM requests
-        WHERE user_id = %s AND status IN ('APPROVED', 'DONE')
+        WHERE user_id = %s AND status IN ('APPROVED', 'DONE', 'REJECTED')
         ORDER BY request_id DESC
         ''',
         (user_id,)
@@ -307,7 +324,10 @@ def notifications(
     items = []
 
     for row in rows:
-        if row['request_type'] == 'ADDRESS_CHANGE':
+        if row['request_type'] == 'ADDRESS_CHANGE' and row['status'] == 'REJECTED':
+            message = '배송지 변경 요청이 거절되었습니다.'
+
+        elif row['request_type'] == 'ADDRESS_CHANGE':
             message = '변경 완료되었습니다.'
 
         else:

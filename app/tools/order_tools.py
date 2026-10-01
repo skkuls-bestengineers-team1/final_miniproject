@@ -13,6 +13,7 @@ _ORDER_SQL = '''
         o.product_code,
         p.product_name,
         p.category_code,
+        p.price,
         o.option,
         o.order_date,
         o.delivery_status,
