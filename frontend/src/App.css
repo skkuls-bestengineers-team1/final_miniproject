@@ -327,6 +327,13 @@ select {
   padding: 8px 10px 10px 0;
 }
 
+.store-card div,
+.order-card div {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
 .store-card p,
 .product-card p,
 .order-card p,
@@ -347,6 +354,14 @@ select {
   background: var(--accent);
   color: #fff;
   cursor: pointer;
+}
+
+.store-card button,
+.order-card button {
+  align-self: flex-end;
+  margin-top: auto;
+  font-size: 11px;
+  padding: 4px 10px;
 }
 
 .status-pill {
@@ -477,6 +492,46 @@ select {
 .bubble.bot {
   background: transparent;
   padding: 2px 0 0;
+}
+
+.bubble.bot.markdown {
+  white-space: normal;
+}
+
+.bubble.bot.markdown p {
+  margin: 0 0 8px;
+}
+
+.bubble.bot.markdown p:last-child {
+  margin-bottom: 0;
+}
+
+.bubble.bot.markdown ul,
+.bubble.bot.markdown ol {
+  margin: 8px 0;
+  padding-left: 1.2em;
+}
+
+.bubble.bot.markdown li {
+  margin: 4px 0;
+}
+
+.bubble.bot.markdown li > p {
+  margin: 0;
+}
+
+.bubble.bot.markdown strong {
+  font-weight: 700;
+  color: #1428a0;
+}
+
+.bubble.bot.markdown h1,
+.bubble.bot.markdown h2,
+.bubble.bot.markdown h3 {
+  margin: 0 0 8px;
+  font-size: 15px;
+  font-weight: 700;
+  color: #1428a0;
 }
 
 .row time {

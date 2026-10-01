@@ -1,3 +1,4 @@
+import ReactMarkdown from 'react-markdown'
 import type { ChatUi } from '../api'
 import { OrderCards } from './OrderCards'
 import { ProductCards } from './ProductCards'
@@ -27,12 +28,17 @@ export function MessageBubble({ message, onReserve }: MessageBubbleProps) {
   const stores = message.ui?.stores || []
   const products = message.ui?.products || []
   const orders = message.ui?.orders || []
+  const hideText = orders.length > 1
 
   return (
     <div className="row bot">
       <div className="bot-face" aria-hidden="true">✧</div>
       <div className="bot-stack">
-        <div className="bubble bot">{message.text}</div>
+        {hideText || !message.text.trim() ? null : (
+          <div className="bubble bot markdown">
+            <ReactMarkdown>{message.text}</ReactMarkdown>
+          </div>
+        )}
         {stores.length ? (
           <div className="store-list">
             {stores.map((store) => (

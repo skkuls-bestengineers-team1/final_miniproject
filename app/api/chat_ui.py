@@ -102,7 +102,8 @@ def build_chat_ui(
         return None
     stores: list[dict] = []
     products: list[dict] = []
-    orders: dict[str, dict] = {}
+    list_orders: dict[str, dict] = {}
+    detail_orders: dict[str, dict] = {}
 
     try:
         catalog = _store_rows() if results else {}
@@ -145,15 +146,17 @@ def build_chat_ui(
             card = _order_card(item)
 
             if card:
-                orders[card['order_id']] = card
+                list_orders[card['order_id']] = card
 
         if payload.get('order_id') and payload.get('product_name'):
             card = _order_card(payload)
 
             if card:
-                previous = orders.get(card['order_id']) or {}
+                previous = detail_orders.get(card['order_id']) or list_orders.get(card['order_id']) or {}
                 merged = {**previous, **{key: value for key, value in card.items() if value}}
-                orders[card['order_id']] = merged
+                detail_orders[card['order_id']] = merged
+
+    orders = detail_orders if detail_orders else list_orders
 
     if not stores and not products and not orders:
         return None
