@@ -298,6 +298,8 @@ def worker4(
 
         if order is None:
             return finished(state, 'worker4', '조회할 주문이 없습니다.', payload)
+        
+        payload = {**payload, 'orders': [order]}
 
         if not _within_return_window(order):
             refuse = (
