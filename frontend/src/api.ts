@@ -110,6 +110,11 @@ export type Reservation = {
   cancelled_at: string | null
 }
 
+export type InquiryResponse = {
+  ok: boolean
+  inquiry_id: number
+}
+
 // 서버가 400/404로 돌려준 detail(안내 문구)을 그대로 보여 준다.
 async function errorDetail(response: Response, fallback: string): Promise<string> {
   try {
@@ -173,6 +178,33 @@ export async function fetchReservations(userId: string): Promise<Reservation[]> 
 
   return response.json()
 }
+
+
+export async function submitInquiry(
+  userId: string,
+  inquiryTypeCode: string,
+  inquiryText: string,
+): Promise<InquiryResponse> {
+  const response = await fetch(`${API_BASE}/inquiries`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-User-Id': userId,
+    },
+    body: JSON.stringify({
+      user_id: userId,
+      inquiry_type_code: inquiryTypeCode,
+      inquiry_text: inquiryText,
+    }),
+  })
+
+  if (!response.ok) {
+    throw new Error(await errorDetail(response, '고객의 소리를 접수하지 못했습니다.'))
+  }
+
+  return response.json()
+}
+
 
 export async function fetchNotifications(userId: string) {
   const response = await fetch(`${API_BASE}/notifications/${userId}`)

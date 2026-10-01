@@ -978,3 +978,206 @@ footer {
     justify-self: start;
   }
 }
+
+/* 서비스 안내 */
+.service-guide {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  width: 100%;
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 32px 36px;
+  box-sizing: border-box;
+}
+
+.service-guide > header {
+  grid-column: 1 / -1;
+  margin-bottom: 6px;
+}
+
+.service-guide > header h2 {
+  margin: 0 0 8px;
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.service-guide > header p {
+  margin: 0;
+  color: #666;
+  font-size: 15px;
+}
+
+.service-guide > div {
+  padding: 22px 24px;
+  border: 1px solid #e5e5e5;
+  border-radius: 14px;
+  background: #fafafa;
+}
+
+.service-guide > div h3 {
+  margin: 0 0 10px;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.service-guide > div p {
+  margin: 0;
+  color: #555;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+/* 마지막 방문 예약 카드는 한 줄 전체 사용 */
+.service-guide > div:nth-of-type(5) {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 768px) {
+  .service-guide {
+    grid-template-columns: 1fr;
+    padding: 24px;
+  }
+
+  .service-guide > header,
+  .service-guide > div:nth-of-type(5) {
+    grid-column: auto;
+  }
+}
+
+/* =========================
+   고객의 소리
+========================= */
+
+.customer-voice {
+  display: block;
+  width: 100%;
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 34px 40px 40px;
+  box-sizing: border-box;
+  text-align: left;
+}
+
+.customer-voice > header {
+  margin-bottom: 30px;
+}
+
+.customer-voice > header h2 {
+  margin: 0 0 10px;
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.customer-voice > header p {
+  margin: 0;
+  color: #666;
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+
+/* 폼 전체 */
+.customer-voice form {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  gap: 22px;
+}
+
+
+/* 문의 유형 / 내용 */
+.customer-voice form label {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  gap: 9px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #222;
+}
+
+
+/* 문의 유형 */
+.customer-voice select {
+  width: 100%;
+  height: 48px;
+  padding: 0 14px;
+  border: 1px solid #d5d5d5;
+  border-radius: 10px;
+  background: #fff;
+  font-size: 15px;
+  box-sizing: border-box;
+}
+
+
+/* 내용 */
+.customer-voice textarea {
+  width: 100%;
+  min-height: 180px;
+  padding: 15px;
+  border: 1px solid #d5d5d5;
+  border-radius: 10px;
+  background: #fff;
+  font-family: inherit;
+  font-size: 15px;
+  line-height: 1.6;
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+
+/* 입력 중 */
+.customer-voice select:focus,
+.customer-voice textarea:focus {
+  outline: none;
+  border-color: #315fd5;
+  box-shadow: 0 0 0 3px rgba(49, 95, 213, 0.1);
+}
+
+
+/* 접수 버튼 */
+.customer-voice form > button {
+  align-self: flex-end;
+  min-width: 120px;
+  padding: 12px 24px;
+  border: 0;
+  border-radius: 999px;
+  background: #111;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.customer-voice form > button:hover:not(:disabled) {
+  opacity: 0.82;
+}
+
+.customer-voice form > button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+
+/* 오류 메시지 */
+.customer-voice .reserve-error {
+  margin: -6px 0 0;
+  font-size: 14px;
+}
+
+
+/* 모바일 */
+@media (max-width: 768px) {
+  .customer-voice {
+    padding: 26px 22px 30px;
+  }
+
+  .customer-voice textarea {
+    min-height: 150px;
+  }
+
+  .customer-voice form > button {
+    width: 100%;
+  }
+}

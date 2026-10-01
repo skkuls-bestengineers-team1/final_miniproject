@@ -2,10 +2,12 @@ import { useState } from 'react'
 import { ChatWindow, QUICK_PROMPTS } from './components/ChatWindow'
 import { BotMark } from './components/BotMark'
 import { FaqList } from './components/FaqList'
+import { ServiceGuide } from './components/ServiceGuide'
 import { ReservationList } from './components/ReservationList'
+import { CustomerVoice } from './components/CustomerVoice'
 import './App.css'
 
-type Page = 'chat' | 'faq' | 'reservations'
+type Page = 'chat' | 'faq' | 'reservations' | 'service' | 'voice'
 
 const USERS = [
   { id: 'U001', name: '박종석' },
@@ -31,8 +33,16 @@ export default function App() {
       return 'faq'
     }
 
+    if (item === '서비스 안내') {
+      return 'service'
+    }
+
     if (item === '서비스 예약') {
       return 'reservations'
+    }
+
+    if (item === '고객의 소리') {
+      return 'voice'
     }
 
     return 'chat'
@@ -43,8 +53,16 @@ export default function App() {
       return item === '자주묻는질문(FAQ)'
     }
 
+    if (page === 'service') {
+      return item === '서비스 안내'
+    }
+
     if (page === 'reservations') {
       return item === '서비스 예약'
+    }
+
+    if (page === 'voice') {
+      return item === '고객의 소리'
     }
 
     return item === '사성 AI 상담'
@@ -112,13 +130,25 @@ export default function App() {
 
       <section className="hero">
         {page === 'faq' ? null : (
-          <p className="kicker">{page === 'reservations' ? '서비스 예약' : '사성 CS Bot 시작'}</p>
+          <p className="kicker">
+            {page === 'service'
+              ? '서비스 안내'
+              : page === 'reservations'
+                ? '서비스 예약'
+                : page === 'voice'
+                  ? '고객의 소리'
+                  : '사성 CS Bot 시작'}
+          </p>
         )}
         <h1>
           {page === 'faq' ? (
             <span id="faq-title">자주묻는질문(FAQ)</span>
+          ) : page === 'service' ? (
+            <span>서비스 안내</span>
           ) : page === 'reservations' ? (
             <span>내 방문 예약</span>
+          ) : page === 'voice' ? (
+            <span>고객의 소리</span>
           ) : (
             <>
               <span>신속한 상담</span>
@@ -143,8 +173,19 @@ export default function App() {
               setSeedPrompt(prompt)
             }}
           />
+        ) : page === 'service' ? (
+          <ServiceGuide />
         ) : page === 'reservations' ? (
-          <ReservationList userId={user.id} userName={user.name} onStartChat={openNearbyStoreChat} />
+          <ReservationList
+            userId={user.id}
+            userName={user.name}
+            onStartChat={openNearbyStoreChat}
+          />
+        ) : page === 'voice' ? (
+          <CustomerVoice
+            userId={user.id}
+            userName={user.name}
+          />
         ) : (
           <h2 className="features-title">사성 CS Bot으로 확인해 보세요</h2>
         )}
