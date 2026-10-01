@@ -50,6 +50,13 @@ class ReservationItem(BaseModel):
     visit_time: str
     status: str
     created_at: str
+    cancelled_at: str | None = None
+
+
+class ReservationCancelRequest(BaseModel):
+    '''예약 취소. 본인 확인용 user_id.'''
+
+    user_id: str = 'U001'
 
 
 class RequestItem(BaseModel):

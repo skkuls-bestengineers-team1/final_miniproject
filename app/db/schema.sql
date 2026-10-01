@@ -86,7 +86,8 @@ CREATE TABLE reservations (
     visit_date      TEXT NOT NULL,      -- YYYY-MM-DD
     visit_time      TEXT NOT NULL,      -- HH:MM
     status          TEXT NOT NULL DEFAULT 'BOOKED' CHECK (status IN ('BOOKED','CANCELLED')),
-    created_at      TEXT NOT NULL DEFAULT TO_CHAR(NOW(), 'YYYY-MM-DD HH24:MI:SS')
+    created_at      TEXT NOT NULL DEFAULT TO_CHAR(NOW(), 'YYYY-MM-DD HH24:MI:SS'),
+    cancelled_at    TEXT                -- 취소하면 채운다. 행은 지우지 않는다.
 );
 
 CREATE UNIQUE INDEX reservations_user_slot_idx
