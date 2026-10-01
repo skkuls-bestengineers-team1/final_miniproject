@@ -59,6 +59,19 @@ class ReservationCancelRequest(BaseModel):
     user_id: str = 'U001'
 
 
+class InquiryRequest(BaseModel):
+    '''고객의 소리 접수.'''
+
+    user_id: str = 'U001'
+    inquiry_type_code: str | None = None
+    inquiry_text: str = Field(min_length=1)
+
+
+class InquiryResponse(BaseModel):
+    ok: bool
+    inquiry_id: int
+
+
 class RequestItem(BaseModel):
     request_id: int
     order_id: str

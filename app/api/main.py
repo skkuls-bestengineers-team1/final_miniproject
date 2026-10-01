@@ -16,6 +16,8 @@ from app.api.schemas import (
     AdminActionResponse,
     ChatRequest,
     ChatResponse,
+    InquiryRequest,
+    InquiryResponse,
     NotificationItem,
     NotificationResponse,
     RequestItem,
@@ -33,6 +35,7 @@ from app.redis_store.checkpointer import close_checkpointer, get_checkpointer
 from app.tools.request_tools import mark_request_status
 from app.tools.reservation_tools import cancel_reservation, create_reservation, list_reservations
 from app.tools.search_origin import current_origin, registered_origin
+from app.tools.inquiry_tools import save_inquiry
 
 graph = None
 graph_error = ''
@@ -243,6 +246,31 @@ def reset_chat_session(
     user_id = x_user_id or body.user_id or settings.default_user_id
     _clear_thread(compiled, user_id)
     return {'ok': True}
+
+
+@app.post('/inquiries', response_model=InquiryResponse)
+def create_inquiry(
+        body: InquiryRequest,
+        x_user_id: str | None = Header(default=None),
+) -> InquiryResponse:
+    '''고객의 소리 문의를 접수한다.'''
+
+    user_id = x_user_id or body.user_id or settings.default_user_id
+
+    result = save_inquiry(
+        user_id=user_id,
+        inquiry_text=body.inquiry_text,
+        inquiry_type_code=body.inquiry_type_code,
+    )
+
+    if not result.get('ok'):
+        status_code = 404 if result.get('error_code') == 'USER_NOT_FOUND' else 400
+        raise HTTPException(
+            status_code=status_code,
+            detail=result.get('message'),
+        )
+
+    return InquiryResponse(**result)
 
 
 @app.post('/reservations', response_model=ReservationItem)
