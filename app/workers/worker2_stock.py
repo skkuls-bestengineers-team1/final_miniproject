@@ -6,6 +6,8 @@ LLM 추출(실패 시 키워드).
 기준점이 없으면 한 번 묻는다: 현재 위치 / 주소 입력 / 등록 주소.
 '''
 
+from typing import Literal
+
 from pydantic import BaseModel
 
 from app.config import settings
@@ -14,7 +16,14 @@ from app.db.connection import fetch_all
 from app.graph.confirm import finished, latest_user_text, validation_retry_update, waiting
 from app.graph.state import State
 from app.llm import get_llm
-from app.tools.search_origin import is_fresh, registered_origin, resolve_search_origin, typed_origin
+from app.tools.search_origin import (
+    ASK_CURRENT_POSITION_MESSAGE,
+    is_fresh,
+    origin_request_from_text,
+    registered_origin,
+    resolve_search_origin,
+    typed_origin,
+)
 from app.tools.stock_tools import get_stock
 from app.tools.store_tools import find_nearest_stores
 
@@ -34,6 +43,7 @@ class StockQuery(BaseModel):
     product_name: str | None = None
     category_code: str | None = None
     location_text: str | None = None    # 지점이 아닌 기준 위치 표현 (예: "용산 근처" → "용산")
+    origin_request: Literal['current', 'registered'] | None = None     # "현재 위치로 / 등록 주소로"
 
 
 def _match_store(
@@ -114,6 +124,7 @@ def _extract_with_llm(
 - product_name: 제품 목록 중 하나. 특정 제품을 말했을 때만 채웁니다.
 - category_code: 카테고리 목록의 괄호 앞 코드만 씁니다. (예: ROBOT_CLEANER) product_name이 있으면 null로 둡니다.
 - location_text: 지점 목록에 없는 기준 위치(역·동·구 이름 등)를 말했을 때만 그 지명만 씁니다. (예: "용산 근처 재고" → "용산") store_name을 채웠으면 null로 둡니다.
+- origin_request: 가까운 지점의 기준을 직접 지정했을 때만 씁니다. "현재 위치", "지금 있는 곳", "여기서" → "current", "등록 주소", "우리 집" → "registered". "A 말고 B"라고 하면 B를 따릅니다. 기준을 정하지 않았으면 null로 둡니다.
 
 지점 목록: {', '.join(store_names)}
 제품 목록: {', '.join(product_names)}
@@ -154,6 +165,9 @@ def _extract(
 ) -> StockQuery:
     '''LLM 추출을 먼저 쓰고, 실패하면 키워드 매칭으로 대신한다.'''
 
+    # 기준을 바꿔 달라는 말은 키워드가 우선이고, LLM이 다른 표현을 보완한다.
+    keyword_request = origin_request_from_text(text)
+
     # _extract_with_llm 결과가 있으면 그대로 반환
     extracted = _extract_with_llm(text)
 
@@ -165,6 +179,8 @@ def _extract(
         if extracted.store_name:
             extracted.location_text = None
 
+        extracted.origin_request = keyword_request or extracted.origin_request
+
         return extracted
 
     # 없으면 _match_store·_match_product·_match_category로 StockQuery 구성
@@ -174,6 +190,7 @@ def _extract(
         store_name=_match_store(text),
         product_name=product_name,
         category_code=None if product_name else _match_category(text),
+        origin_request=keyword_request,
     )
 
 
@@ -287,8 +304,13 @@ def _handle_origin_answer(
     if is_fresh(origin):
         return _answer_nearest(state, pending, origin)
 
-    # 버튼 대신 입력한 답: "등록 주소"라고 했거나 주소를 입력했다.
-    if '등록' in text:
+    # 버튼 대신 입력한 답: "현재 위치"·"등록 주소"라고 했거나 주소를 입력했다.
+    request = origin_request_from_text(text)
+
+    if request == 'current':
+        return waiting(state, 'worker2', 'ask_search_origin', ASK_CURRENT_POSITION_MESSAGE, pending)
+
+    if request == 'registered' or '등록' in text:
         origin = registered_origin(user_id)
 
     else:
@@ -350,6 +372,20 @@ def worker2(
 
     if query.store_name:
         return _answer(state, query.store_name, pending)
+
+    # "현재 위치 기준으로" / "등록 주소로"처럼 기준을 직접 지정한 경우
+    if query.origin_request == 'current':
+        update = waiting(state, 'worker2', 'ask_search_origin', ASK_CURRENT_POSITION_MESSAGE, pending)
+        update['search_origin_asked'] = True
+        # 남아 있는 기준점을 다음 턴에 버튼 선택으로 오인하지 않도록 비운다.
+        update['search_origin'] = None
+        return update
+
+    if query.origin_request == 'registered':
+        origin = registered_origin(state['user_id'])
+
+        if origin:
+            return _answer_nearest(state, pending, origin)
 
     # "용산 근처 재고"처럼 기준 위치를 직접 말한 경우
     if query.location_text:

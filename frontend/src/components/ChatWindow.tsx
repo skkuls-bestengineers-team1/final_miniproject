@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useRef, useState } from 'react'
 import type { ChatStoreCard } from '../api'
-import { Position, SendOptions, sendMessage } from '../api'
+import { Position, SendOptions, resetChatSession, sendMessage } from '../api'
 import { BotMark } from './BotMark'
 import { ChatMessage, MessageBubble } from './MessageBubble'
 import { ReservationModal } from './ReservationModal'
@@ -15,6 +15,7 @@ type ChatWindowProps = {
 export const QUICK_PROMPTS = [
   '가까운 지점 알려주세요',
   '강남역 로봇청소기 재고 알려주세요',
+  '주문 내역 보여주세요',
   '배송 상태 알려주세요',
   '배송지 변경하고 싶어요',
   '교환하고 싶어요',
@@ -131,7 +132,10 @@ export function ChatWindow({
         { role: 'bot', text: `${result.answer}${suffix}`, time: clock(), ui: result.ui },
       ])
     } catch (error) {
-      const message = error instanceof Error ? error.message : '전송에 실패했습니다.'
+      const raw = error instanceof Error ? error.message : '전송에 실패했습니다.'
+      const message = /failed to fetch|networkerror|load failed/i.test(raw)
+        ? '상담 서버에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.'
+        : raw
 
       setMessages((current) => [
         ...current,
@@ -177,6 +181,7 @@ export function ChatWindow({
   }
 
   function resetChat() {
+    void resetChatSession(userId)
     setActive(false)
     setMessages([])
     setDraft('')
@@ -260,7 +265,9 @@ export function ChatWindow({
         ) : null}
       </div>
       {waitingApproval ? (
-        <p className="notice">배송지 변경은 관리자 승인 후 이어집니다.</p>
+        <p className="notice">
+          배송지 변경은 관리자 승인 후 이어집니다. 다른 문의를 보내면 그 상담을 이어서 진행합니다.
+        </p>
       ) : null}
       {askOrigin && !sending ? (
         <div className="origin-pick" role="group" aria-label="기준 위치 선택">
@@ -300,7 +307,7 @@ export function ChatWindow({
         </a>
       </p>
       {reserveStore ? (
-        <ReservationModal store={reserveStore} onClose={() => setReserveStore(null)} />
+        <ReservationModal userId={userId} store={reserveStore} onClose={() => setReserveStore(null)} />
       ) : null}
     </section>
   )

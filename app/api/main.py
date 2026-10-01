@@ -19,13 +19,19 @@ from app.api.schemas import (
     NotificationItem,
     NotificationResponse,
     RequestItem,
+    ReservationCancelRequest,
+    ReservationItem,
+    ReservationRequest,
+    SessionResetRequest,
 )
 from app.config import settings
 from app.db.connection import fetch_all
 from app.graph.builder import build_graph
 from app.graph.state import initial_state
+from app.llm import content_text
 from app.redis_store.checkpointer import close_checkpointer, get_checkpointer
 from app.tools.request_tools import mark_request_status
+from app.tools.reservation_tools import cancel_reservation, create_reservation, list_reservations
 from app.tools.search_origin import current_origin, registered_origin
 
 graph = None
@@ -100,17 +106,62 @@ def _interrupt_payload(snapshot) -> dict | None:
     return {'draft': str(value)}
 
 
+def _clear_thread(
+        compiled,
+        user_id: str
+) -> None:
+    '''승인 대기로 멈춘 세션을 지운다. 같은 사용자가 다른 문의를 이어서 할 수 있다.'''
+
+    saver = getattr(compiled, 'checkpointer', None)
+
+    if saver is None:
+        saver = get_checkpointer()
+
+    delete = getattr(saver, 'delete_thread', None)
+
+    if callable(delete):
+        try:
+            delete(user_id)
+            return
+        except Exception:
+            pass
+
+    compiled.invoke(
+        Command(resume={'approved': False}),
+        _config(user_id),
+    )
+
+
+def _graph_snapshot(
+        compiled,
+        config: dict
+):
+    try:
+        return compiled.get_state(config)
+
+    except Exception:
+        return None
+
+
+def _address_change_pending(
+        values: dict | None
+) -> bool:
+    for item in (values or {}).get('last_tool_results') or []:
+        if isinstance(item, dict) and item.get('ok') and item.get('status') == 'PENDING':
+            return True
+
+    return False
+
+
 def _last_ai_text(messages) -> str:
     for message in reversed(messages or []):
         if getattr(message, 'type', None) != 'ai':
             continue
 
-        content = message.content
+        text = content_text(message.content)
 
-        if isinstance(content, str):
-            return content
-
-        return str(content)
+        if text:
+            return text
 
     return ''
 
@@ -123,16 +174,17 @@ def chat(
     compiled = _require_graph()
     user_id = x_user_id or body.user_id or settings.default_user_id
     config = _config(user_id)
-    snapshot = compiled.get_state(config)
-    paused = _interrupt_payload(snapshot)
+    snapshot = _graph_snapshot(compiled, config)
+    paused = _interrupt_payload(snapshot) if snapshot else None
 
+    # interrupt는 관리자 승인용이다. 사용자가 새 문의를 보내면 대기를 풀고 다시 분류한다.
     if paused:
-        return ChatResponse(
-            answer=paused.get('draft') or '관리자 승인을 기다리고 있습니다.',
-            waiting_approval=True,
-        )
+        _clear_thread(compiled, user_id)
+        snapshot = _graph_snapshot(compiled, config)
 
-    if snapshot.values:
+    has_state = bool(snapshot and snapshot.values)
+
+    if has_state:
         payload = {
             'messages': [HumanMessage(content=body.message)],
         }
@@ -153,22 +205,89 @@ def chat(
     elif body.use_registered_address:
         payload['search_origin'] = registered_origin(user_id)
 
-    result = compiled.invoke(payload, config)
-    snapshot = compiled.get_state(config)
-    paused = _interrupt_payload(snapshot)
+    try:
+        result = compiled.invoke(payload, config)
+        snapshot = _graph_snapshot(compiled, config)
+        paused = _interrupt_payload(snapshot) if snapshot else None
+        values = (snapshot.values if snapshot else None) or {}
 
-    if paused:
+        if paused:
+            return ChatResponse(
+                answer=paused.get('draft') or '관리자 승인을 기다리고 있습니다.',
+                waiting_approval=True,
+            )
+
         return ChatResponse(
-            answer=paused.get('draft') or '관리자 승인을 기다리고 있습니다.',
-            waiting_approval=True,
+            answer=_last_ai_text(result.get('messages')),
+            waiting_approval=_address_change_pending(values),
+            ask_search_origin=values.get('step') == 'ask_search_origin',
+            ui=build_chat_ui(values),
         )
 
-    return ChatResponse(
-        answer=_last_ai_text(result.get('messages')),
-        waiting_approval=False,
-        ask_search_origin=(snapshot.values or {}).get('step') == 'ask_search_origin',
-        ui=build_chat_ui(snapshot.values or {}),
-    )
+    except HTTPException:
+        raise
+
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f'상담 처리 중 오류가 발생했습니다. {exc}',
+        ) from exc
+
+
+@app.post('/chat/reset')
+def reset_chat_session(
+        body: SessionResetRequest,
+        x_user_id: str | None = Header(default=None),
+) -> dict:
+    compiled = _require_graph()
+    user_id = x_user_id or body.user_id or settings.default_user_id
+    _clear_thread(compiled, user_id)
+    return {'ok': True}
+
+
+@app.post('/reservations', response_model=ReservationItem)
+def reserve_visit(
+        body: ReservationRequest,
+        x_user_id: str | None = Header(default=None),
+) -> ReservationItem:
+    '''예약 팝업의 "예약 접수". 검증에 실패하면 400과 안내 문구를 돌려준다.'''
+
+    user_id = x_user_id or body.user_id or settings.default_user_id
+    result = create_reservation(user_id, body.store_name, body.visit_date, body.visit_time)
+
+    return _reservation_response(result)
+
+
+def _reservation_response(
+        result: dict
+) -> ReservationItem:
+    '''예약 Tool 결과를 응답으로. 실패면 NOT_FOUND는 404, 나머지는 400과 안내 문구.'''
+
+    if not result.get('ok'):
+        status_code = 404 if result.get('error_code', '').endswith('NOT_FOUND') else 400
+        raise HTTPException(status_code=status_code, detail=result.get('message'))
+
+    return ReservationItem(**result)
+
+
+@app.post('/reservations/{reservation_id}/cancel', response_model=ReservationItem)
+def cancel_visit(
+        reservation_id: int,
+        body: ReservationCancelRequest,
+        x_user_id: str | None = Header(default=None),
+) -> ReservationItem:
+    '''서비스 예약 탭의 "예약 취소". 본인의 지나지 않은 예약만 취소한다.'''
+
+    user_id = x_user_id or body.user_id or settings.default_user_id
+
+    return _reservation_response(cancel_reservation(user_id, reservation_id))
+
+
+@app.get('/reservations/{user_id}', response_model=list[ReservationItem])
+def user_reservations(
+        user_id: str
+) -> list[ReservationItem]:
+    return [ReservationItem(**row) for row in list_reservations(user_id)]
 
 
 @app.get('/admin/requests', response_model=list[RequestItem])
@@ -193,28 +312,33 @@ def _resume(
         request_id: int,
         approved: bool
 ) -> AdminActionResponse:
-    _require_graph()
+    compiled = _require_graph()
     status = 'DONE' if approved else 'REJECTED'
     updated = mark_request_status(request_id, status)
 
     if not updated.get('ok'):
         raise HTTPException(status_code=404, detail=updated.get('message'))
 
+    # 새 worker3는 interrupt를 쓰지 않는다. 예전 세션만 그래프를 재개한다.
+    config = _config(updated['user_id'])
+    snapshot = _graph_snapshot(compiled, config)
+    paused = _interrupt_payload(snapshot) if snapshot else None
     resumed = False
     detail = ''
 
-    try:
-        graph.invoke(
-            Command(resume={
-                'approved': approved,
-                'request_id': request_id,
-            }),
-            _config(updated['user_id']),
-        )
-        resumed = True
+    if paused:
+        try:
+            compiled.invoke(
+                Command(resume={
+                    'approved': approved,
+                    'request_id': request_id,
+                }),
+                config,
+            )
+            resumed = True
 
-    except Exception as exc:
-        detail = str(exc)
+        except Exception as exc:
+            detail = str(exc)
 
     return AdminActionResponse(
         ok=True,
@@ -249,7 +373,7 @@ def notifications(
         '''
         SELECT request_id, request_type, status
         FROM requests
-        WHERE user_id = %s AND status IN ('APPROVED', 'DONE')
+        WHERE user_id = %s AND status IN ('APPROVED', 'DONE', 'REJECTED')
         ORDER BY request_id DESC
         ''',
         (user_id,)
@@ -258,7 +382,10 @@ def notifications(
     items = []
 
     for row in rows:
-        if row['request_type'] == 'ADDRESS_CHANGE':
+        if row['request_type'] == 'ADDRESS_CHANGE' and row['status'] == 'REJECTED':
+            message = '배송지 변경 요청이 거절되었습니다.'
+
+        elif row['request_type'] == 'ADDRESS_CHANGE':
             message = '변경 완료되었습니다.'
 
         else:

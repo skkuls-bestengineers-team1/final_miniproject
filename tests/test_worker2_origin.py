@@ -182,3 +182,24 @@ def test_ask_missing_updates_product(monkeypatch, tools):
     assert '용산점 재고입니다' in update['draft_answer']
     assert '사성 비스포크 제트봇 AI' in update['draft_answer']
     assert '재고 10개' in update['draft_answer']
+
+
+def test_current_request_reasks_even_with_saved_origin(monkeypatch, tools):
+    _extract_returns(monkeypatch, category_code='ROBOT_CLEANER', origin_request='current')
+    saved = dict(REGISTERED, at=_now())
+
+    update = w.worker2(_state('현재 위치 기준으로 로봇청소기 재고', search_origin=saved, search_origin_asked=True))
+
+    assert update['step'] == 'ask_search_origin'
+    assert '[현재 위치 사용]' in update['draft_answer']
+    assert update['search_origin'] is None
+    assert update['pending_data']['category_code'] == 'ROBOT_CLEANER'
+
+
+def test_registered_request_uses_registered(monkeypatch, tools):
+    _extract_returns(monkeypatch, category_code='ROBOT_CLEANER', origin_request='registered')
+    current = search_origin.current_origin(37.49, 127.03)
+
+    update = w.worker2(_state('등록 주소 기준 로봇청소기 재고', search_origin=current, search_origin_asked=True))
+
+    assert update['draft_answer'].startswith('등록 주소 기준')
