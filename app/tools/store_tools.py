@@ -8,6 +8,8 @@ from app.redis_store.geo import search_nearest
 from app.tools.user_tools import get_user_address
 from app.db.connection import fail
 
+SEARCH_RADIUS_KM = (50, 200)    # 가까운 반경에 지점이 없으면 한 번 넓혀 찾는다.
+
 
 def find_nearest_stores(
         user_id: str,
@@ -31,24 +33,34 @@ def find_nearest_stores(
         basis = 'registered'
         label = '등록 주소'
 
+    stores = []
+    radius_km = SEARCH_RADIUS_KM[0]
+
     try:
         client = get_redis()
-        stores = search_nearest(
-            client,
-            lng=float(lng),
-            lat=float(lat),
-            count=top_k,
-        )
+
+        for radius_km in SEARCH_RADIUS_KM:
+            stores = search_nearest(
+                client,
+                lng=float(lng),
+                lat=float(lat),
+                count=top_k,
+                radius_km=radius_km,
+            )
+
+            if stores:
+                break
 
     except Exception as exc:
         return fail('REDIS_UNAVAILABLE', f'지점 좌표를 조회하지 못했습니다. {exc}')
 
     if not stores:
-        return fail('EMPTY_RESULT', '반경 안에 지점이 없습니다.')
+        return fail('EMPTY_RESULT', f'{label} 기준 {SEARCH_RADIUS_KM[-1]}km 안에 지점이 없습니다.')
 
     return {
         'ok': True,
         'stores': stores,
         'basis': basis,
         'label': label,
+        'radius_km': radius_km,
     }
