@@ -156,7 +156,9 @@ def build_chat_ui(
                 merged = {**previous, **{key: value for key, value in card.items() if value}}
                 detail_orders[card['order_id']] = merged
 
-    orders = detail_orders if detail_orders else list_orders
+    question_text = ' '.join(str(p.get('question', '')) for p in results if isinstance(p, dict))
+    filtered_orders = {order_id: card for order_id, card in list_orders.items() if order_id in question_text}
+    orders = detail_orders if detail_orders else (filtered_orders or list_orders)
 
     if not stores and not products and not orders:
         return None
