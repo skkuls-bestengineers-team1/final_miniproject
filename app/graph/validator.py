@@ -62,7 +62,7 @@ def _supported_refusal(
         if decision == 'RETURN_WINDOW_EXPIRED' and '7일이 지나' in draft:
             return True
 
-        if decision == 'POLICY_CITATION' and '[관련 규정]' in draft:
+        if decision == 'POLICY_CITATION' and '[관련 규정' in draft:
             return True
 
         if decision == 'NOT_DELIVERED' and (

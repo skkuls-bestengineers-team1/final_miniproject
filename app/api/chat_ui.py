@@ -150,8 +150,24 @@ def build_chat_ui(
             })
 
         store_name = payload.get('store_name') or ''
+        skip_products = (
+            payload.get('decision') == 'POLICY_CITATION'
+            or payload.get('dispute')
+        )
 
         for item in payload.get('items') or []:
+            if skip_products:
+                continue
+
+            if not isinstance(item, dict):
+                continue
+
+            if item.get('doc_id') or item.get('title') or item.get('content'):
+                continue
+
+            if not (item.get('product_name') or item.get('product_code')):
+                continue
+
             code = item.get('category_code') or ''
             product_code = item.get('product_code') or ''
             products.append({
