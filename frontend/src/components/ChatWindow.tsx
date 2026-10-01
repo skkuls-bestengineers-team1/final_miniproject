@@ -132,7 +132,10 @@ export function ChatWindow({
         { role: 'bot', text: `${result.answer}${suffix}`, time: clock(), ui: result.ui },
       ])
     } catch (error) {
-      const message = error instanceof Error ? error.message : '전송에 실패했습니다.'
+      const raw = error instanceof Error ? error.message : '전송에 실패했습니다.'
+      const message = /failed to fetch|networkerror|load failed/i.test(raw)
+        ? '상담 서버에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.'
+        : raw
 
       setMessages((current) => [
         ...current,

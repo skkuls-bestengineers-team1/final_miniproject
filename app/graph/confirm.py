@@ -57,12 +57,19 @@ def _keyword_yes_no(
         return 'unknown'
 
     tokens = text.split()
-    first = tokens[0] if tokens else ''
 
-    if any(first.startswith(word) or word in tokens for word in NO_WORDS):
+    if any(
+        token.startswith(word) or word in tokens
+        for token in tokens
+        for word in NO_WORDS
+    ):
         return 'no'
 
-    if any(first.startswith(word) or word in tokens for word in YES_WORDS):
+    if any(
+        token.startswith(word) or word in tokens
+        for token in tokens
+        for word in YES_WORDS
+    ):
         return 'yes'
 
     return 'unknown'
@@ -78,10 +85,15 @@ def parse_yes_no(
     if not text:
         return 'unknown'
 
+    keyword = _keyword_yes_no(text)
+
+    if keyword in {'yes', 'no'}:
+        return keyword
+
     try:
         verdict = get_llm().with_structured_output(YesNoVerdict).invoke(
             '사용자가 확인 질문에 긍정하면 yes, 부정하면 no, '
-            '확인이 아니면 unknown. 한 값만.\n'
+            '확인이 아니면 unknown. "이거 맞아", "맞아요"도 yes. 한 값만.\n'
             f'발화: {user_text}'
         )
         answer = getattr(verdict, 'answer', None)
@@ -89,13 +101,39 @@ def parse_yes_no(
         if isinstance(verdict, dict):
             answer = verdict.get('answer')
 
-        if answer in {'yes', 'no', 'unknown'}:
+        if answer in {'yes', 'no'}:
             return answer
 
     except Exception:
         pass
 
-    return _keyword_yes_no(text)
+    return 'unknown'
+
+
+def looks_like_continuation(
+        step: str | None,
+        user_text: str
+) -> bool:
+    '''진행 중인 확인·선택 단계의 짧은 답이면 Supervisor LLM 없이 후속으로 본다.'''
+
+    text = (user_text or '').strip()
+
+    if not step or not text:
+        return False
+
+    if step in {'confirm_order', 'confirm_address'}:
+        return _keyword_yes_no(_normalize(text)) in {'yes', 'no'}
+
+    if step == 'select_method':
+        return any(word in text for word in ('방문', '수거', '택배', '지점'))
+
+    if step == 'select_order':
+        return text.isdigit() or 'ORD-' in text.upper()
+
+    if step == 'input_address':
+        return len(text) >= 4
+
+    return False
 
 
 def latest_user_text(

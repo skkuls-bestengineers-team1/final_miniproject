@@ -63,3 +63,24 @@ def test_build_chat_ui_prefers_delivery_detail(monkeypatch):
     assert [item['order_id'] for item in ui['orders']] == ['ORD-003']
     assert ui['orders'][0]['delivery_status_label'] == '배송 중'
     assert ui['orders'][0]['price'] == 429000
+
+
+def test_build_chat_ui_accepts_nested_store_payload(monkeypatch):
+    monkeypatch.setattr('app.api.chat_ui.fetch_all', lambda sql: [
+        {'store_id': 'S001', 'name': '강남역점', 'address': '서울', 'lat': 1.0, 'lng': 2.0},
+    ])
+
+    ui = build_chat_ui({
+        'last_tool_results': [{
+            'ok': True,
+            'request': {'ok': True, 'request_id': 1},
+            'stores': {
+                'ok': True,
+                'stores': [{'store_name': '강남역점', 'distance_km': 0.4}],
+            },
+        }],
+    })
+
+    assert ui is not None
+    assert ui['stores'][0]['store_name'] == '강남역점'
+    assert ui['stores'][0]['distance_km'] == 0.4

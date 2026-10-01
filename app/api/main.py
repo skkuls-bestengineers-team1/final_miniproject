@@ -205,24 +205,33 @@ def chat(
     elif body.use_registered_address:
         payload['search_origin'] = registered_origin(user_id)
 
-    result = compiled.invoke(payload, config)
-    snapshot = _graph_snapshot(compiled, config)
-    paused = _interrupt_payload(snapshot) if snapshot else None
+    try:
+        result = compiled.invoke(payload, config)
+        snapshot = _graph_snapshot(compiled, config)
+        paused = _interrupt_payload(snapshot) if snapshot else None
+        values = (snapshot.values if snapshot else None) or {}
 
-    values = (snapshot.values if snapshot else None) or {}
+        if paused:
+            return ChatResponse(
+                answer=paused.get('draft') or '관리자 승인을 기다리고 있습니다.',
+                waiting_approval=True,
+            )
 
-    if paused:
         return ChatResponse(
-            answer=paused.get('draft') or '관리자 승인을 기다리고 있습니다.',
-            waiting_approval=True,
+            answer=_last_ai_text(result.get('messages')),
+            waiting_approval=_address_change_pending(values),
+            ask_search_origin=values.get('step') == 'ask_search_origin',
+            ui=build_chat_ui(values),
         )
 
-    return ChatResponse(
-        answer=_last_ai_text(result.get('messages')),
-        waiting_approval=_address_change_pending(values),
-        ask_search_origin=values.get('step') == 'ask_search_origin',
-        ui=build_chat_ui(values),
-    )
+    except HTTPException:
+        raise
+
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f'상담 처리 중 오류가 발생했습니다. {exc}',
+        ) from exc
 
 
 @app.post('/chat/reset')

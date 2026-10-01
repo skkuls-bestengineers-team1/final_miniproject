@@ -66,6 +66,9 @@ def validator(
     if not draft:
         return _payload(False, '초안이 비어 있습니다. 사용자 질문에 대한 답을 작성하세요.')
 
+    if state.get('step'):
+        return _payload(True, '추가 입력을 기다리는 안내')
+
     tools = state.get('tool_results') or []
     prompt = PROMPT.format(
         question=latest_user_text(state) or '(질문 없음)',

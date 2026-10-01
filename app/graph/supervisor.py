@@ -10,7 +10,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
 
 from app.config import settings
-from app.graph.confirm import latest_user_text
+from app.graph.confirm import latest_user_text, looks_like_continuation
 from app.graph.state import State
 
 
@@ -75,11 +75,15 @@ worker3:
 - 주문 조회, 주문 내역, 구매 내역
 
 worker4:
-- 교환
-- 환불
+- 수령한 제품의 교환
+- 수령한 제품의 환불·반품
+- 색상 불일치·하자로 받은 상품을 바꾸거나 돌려보내는 요청
 
 fallback:
-- 위 네 가지 범주에 해당하지 않는 문의
+- 결제(중복 결제, 결제 오류, 카드 승인)
+- 계정, 비밀번호, 로그인
+- 기술 문제, 품질 문의
+- 위 Worker 범주에 해당하지 않는 문의
 
 사용자 요청의 의미를 기준으로 분류하세요.
 단순 키워드 일치만으로 판단하지 마세요.
@@ -95,7 +99,8 @@ fallback:
 
 - 재고 보유 여부 또는 재고 수량이 핵심이면 worker2로 분류합니다.
 - 배송 상태, 배송 예정일, 배송지 변경, 주문 조회·주문 내역은 worker3로 분류합니다.
-- 교환 또는 환불 요청은 worker4로 분류합니다.
+- 수령한 제품의 교환 또는 환불 요청은 worker4로 분류합니다.
+- 결제 취소만 원하는 중복 결제, 계정, 기술, 품질 문의는 fallback으로 분류합니다.
 - 어느 범주에도 해당하지 않으면 fallback으로 분류합니다.
 
 예시:
@@ -106,6 +111,9 @@ fallback:
 - "재고 조회하고 싶은데 나랑 가까운 지점이 어디야" → worker2
 - "주문 내역 보여줘" → worker3
 - "주문조회할래" → worker3
+- "색상이 달라서 교환하고 싶어요" → worker4
+- "결제가 두 번 되었습니다" → fallback
+- "비밀번호를 잊어버렸습니다" → fallback
 """
 
 
@@ -146,6 +154,31 @@ continuation_model = model.with_structured_output(
 
 
 
+def classify_keyword(
+        text: str
+) -> str:
+    '''키워드 가드. 결제·계정 등 범위 밖은 LLM 전에 fallback으로 보낸다.'''
+
+    text = text or ''
+
+    if any(word in text for word in ('교환', '환불', '반품')):
+        return 'worker4'
+
+    if '재고' in text:
+        return 'worker2'
+
+    if any(word in text for word in ('배송', '주소', '주문', '내역')):
+        return 'worker3'
+
+    if any(word in text for word in ('가까운', '지점', '매장', '로봇청소기')):
+        return 'worker1'
+
+    if any(word in text for word in ('결제', '비밀번호', '로그인', '계정')):
+        return 'fallback'
+
+    return 'fallback'
+
+
 def classify_intent(
         text: str
 ) -> SupervisorDecision:
@@ -168,21 +201,62 @@ def classify_continuation(
 ) -> ContinuationDecision:
     '''현재 발화가 진행 중인 멀티턴의 후속 응답인지 판단한다.'''
 
-    return continuation_model.invoke(
-        [
-            SystemMessage(
-                content=CONTINUATION_SYSTEM_PROMPT
-            ),
-            HumanMessage(
-                content=f"""
+    text = latest_user_text(state)
+
+    if looks_like_continuation(state.get('step'), text):
+        return ContinuationDecision(
+            is_continuation=True,
+            reason='진행 중 단계의 확인·선택 답변',
+        )
+
+    try:
+        return continuation_model.invoke(
+            [
+                SystemMessage(
+                    content=CONTINUATION_SYSTEM_PROMPT
+                ),
+                HumanMessage(
+                    content=f"""
 현재 Worker: {state.get('current_worker')}
 현재 Step: {state.get('step')}
-사용자 발화: {latest_user_text(state)}
+사용자 발화: {text}
 """
-            ),
-        ]
+                ),
+            ]
+        )
+
+    except Exception:
+        return ContinuationDecision(
+            is_continuation=True,
+            reason='후속 판단 실패로 현재 단계 유지',
+        )
+
+
+
+def decide_target(
+        text: str
+) -> str:
+    '''범위 밖 키워드를 먼저 막고, 나머지는 LLM이 분류한다.'''
+
+    keyword = classify_keyword(text)
+
+    if keyword == 'fallback' and not any(
+        word in text for word in (
+            '교환', '환불', '반품', '재고', '배송', '주소',
+            '지점', '매장', '주문', '내역',
+        )
+    ):
+        print('[Supervisor] target=fallback, reason=범위 밖 문의(키워드 가드)')
+        return 'fallback'
+
+    decision = classify_intent(text)
+
+    print(
+        f'[Supervisor] target={decision.target}, '
+        f'reason={decision.reason}'
     )
 
+    return decision.target
 
 
 def supervisor(
@@ -228,13 +302,4 @@ def route_from_supervisor(
     if current:
         return current
 
-    decision = classify_intent(
-        latest_user_text(state)
-    )
-
-    print(
-        f'[Supervisor] target={decision.target}, '
-        f'reason={decision.reason}'
-    )
-
-    return decision.target
+    return decide_target(latest_user_text(state))

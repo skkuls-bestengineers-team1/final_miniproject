@@ -40,10 +40,6 @@ class MethodVerdict(BaseModel):
     method: Literal['STORE_VISIT', 'PICKUP', 'NONE']
 
 
-class OrderPick(BaseModel):
-    index: int = Field(description='주문 목록 인덱스. 모르면 0')
-
-
 def _invoke_structured(
         schema,
         prompt: str,
@@ -59,8 +55,25 @@ def _rewrite_draft(
         draft: str,
         reason: str
 ) -> str:
+    '''거절·확인 문장은 Tool 결과로 만든 고정 안내를 유지한다.'''
+
+    locked = (
+        '아직 수령 전',
+        '수령 후 7일이 지나',
+        '수령 완료된 주문이 없어',
+        '아래 ',
+        '신청 정보가 맞습니까',
+        '지점 방문',
+        '택배 수거',
+        '방법을 선택',
+    )
+
+    if any(marker in (draft or '') for marker in locked):
+        return draft
+
     prompt = (
         '교환/환불 상담 초안을 고친다. Tool 숫자·주문번호·주소·지점명은 바꾸지 마라.\n'
+        '취소·재주문·상담원 연결 같은 새 안내를 덧붙이지 마라.\n'
         f'[검증 지시]\n{reason}\n\n[초안]\n{draft}\n\n고친 문장만 출력.'
     )
 
@@ -79,6 +92,12 @@ def _request_type(
     if pending.get('request_type'):
         return pending['request_type']
 
+    if '환불' in text or '반품' in text:
+        return 'REFUND'
+
+    if '교환' in text:
+        return 'EXCHANGE'
+
     verdict = _invoke_structured(
         IntentVerdict,
         '사용자 발화가 교환이면 EXCHANGE, 환불·반품이면 REFUND.\n'
@@ -93,16 +112,34 @@ def _request_type(
         if value in {'EXCHANGE', 'REFUND'}:
             return value
 
-    if '환불' in text or '반품' in text:
-        return 'REFUND'
-
     return 'EXCHANGE'
+
+
+def _iso_date(
+        value
+) -> str:
+    if value is None:
+        return ''
+
+    if hasattr(value, 'isoformat'):
+        return str(value.isoformat())[:10]
+
+    return str(value)[:10]
+
+
+def _delivered_orders(
+        orders: list[dict]
+) -> list[dict]:
+    return [
+        order for order in orders
+        if order.get('delivery_status') == 'DELIVERED' and order.get('delivered_date')
+    ]
 
 
 def _within_return_window(
         order: dict
 ) -> bool:
-    delivered = order.get('delivered_date')
+    delivered = _iso_date(order.get('delivered_date'))
 
     if order.get('delivery_status') != 'DELIVERED' or not delivered:
         return False
@@ -116,38 +153,72 @@ def _pick_order(
         orders: list[dict],
         text: str
 ) -> dict | None:
-    if not orders:
+    '''수령 완료 주문만 고른다. 여러 건이면 None을 돌려 질문을 유도한다.'''
+
+    delivered = _delivered_orders(orders)
+    window = [order for order in delivered if _within_return_window(order)]
+    pool = window or delivered
+    print(
+        f'[worker4] delivered={[item.get("order_id") for item in delivered]} '
+        f'window={[item.get("order_id") for item in window]}'
+    )
+
+    if not pool:
         return None
 
-    if len(orders) == 1:
-        return orders[0]
+    named = [
+        order for order in pool
+        if (order.get('product_name') or '') in text
+        or (order.get('option') or '') and (order.get('option') in text)
+    ]
 
-    summary = '\n'.join(
-        f"[{index}] {order['order_id']} {order['product_name']} / {order.get('option') or '-'}"
-        for index, order in enumerate(orders)
+    if len(named) == 1:
+        print(f'[worker4] pick={named[0].get("order_id")} by_name=True')
+        return named[0]
+
+    if len(pool) == 1:
+        print(f'[worker4] pick={pool[0].get("order_id")} single=True')
+        return pool[0]
+
+    print('[worker4] pick=None ask_select_order')
+    return None
+
+
+def _refuse_not_received(
+        label: str,
+        order: dict | None = None
+) -> str:
+    if order:
+        return (
+            f"선택하신 제품({order['product_name']})은 아직 수령 전이라 "
+            f'{label}을 접수할 수 없습니다.'
+        )
+
+    return f'수령 완료된 주문이 없어 {label}을 접수할 수 없습니다.'
+
+
+def _refuse_window(
+        label: str,
+        order: dict
+) -> str:
+    return (
+        f"선택하신 제품({order['product_name']})은 수령 후 7일이 지나 "
+        f'{label} 접수가 어렵습니다.'
     )
-    verdict = _invoke_structured(
-        OrderPick,
-        '목록에서 사용자 발화에 해당하는 주문의 인덱스만 고른다. '
-        '특정할 수 없으면 0.\n'
-        f'[목록]\n{summary}\n[발화]\n{text}',
-    )
 
-    if verdict is not None:
-        index = getattr(verdict, 'index', None)
 
-        if isinstance(verdict, dict):
-            index = verdict.get('index')
+def _order_choice_lines(
+        orders: list[dict],
+        label: str
+) -> str:
+    lines = [f'{label}할 주문을 번호로 알려 주세요.']
 
-        if isinstance(index, int) and 0 <= index < len(orders):
-            return orders[index]
+    for index, order in enumerate(orders, start=1):
+        lines.append(
+            f"{index}. {order['order_id']} {order['product_name']} / {order.get('option') or '-'}"
+        )
 
-    returnable = [order for order in orders if _within_return_window(order)]
-
-    if returnable:
-        return returnable[0]
-
-    return orders[0]
+    return '\n'.join(lines)
 
 
 def _confirm_fields(
@@ -155,13 +226,13 @@ def _confirm_fields(
         request_type: str
 ) -> dict[str, str]:
     fields = {
+        '주문 날짜': format_korean_date(_iso_date(order.get('order_date'))),
         '제품명': order['product_name'],
         '옵션': order.get('option') or '-',
-        '주문번호': order['order_id'],
     }
 
-    if request_type == 'REFUND':
-        fields['주문 날짜'] = format_korean_date(order['order_date'])
+    if request_type != 'REFUND':
+        fields['주문번호'] = order['order_id']
 
     return fields
 
@@ -169,6 +240,12 @@ def _confirm_fields(
 def _parse_method(
         text: str
 ) -> str | None:
+    if '수거' in text or '택배' in text:
+        return 'PICKUP'
+
+    if '방문' in text or '지점' in text:
+        return 'STORE_VISIT'
+
     verdict = _invoke_structured(
         MethodVerdict,
         '지점 방문이면 STORE_VISIT, 택배·수거면 PICKUP, 불명이면 NONE.\n'
@@ -182,15 +259,6 @@ def _parse_method(
 
         if method in {'STORE_VISIT', 'PICKUP'}:
             return method
-
-        if method == 'NONE':
-            return None
-
-    if '수거' in text or '택배' in text:
-        return 'PICKUP'
-
-    if '방문' in text:
-        return 'STORE_VISIT'
 
     return None
 
@@ -274,7 +342,7 @@ def worker4(
     if retried:
         reason = (state.get('validation') or {}).get('reason') or ''
         retried['draft_answer'] = _rewrite_draft(
-            retried.get('draft_answer') or '',
+            state.get('draft_answer') or '',
             reason,
         )
         return retried
@@ -285,38 +353,60 @@ def worker4(
     request_type = _request_type(text, pending)
     label = '환불' if request_type == 'REFUND' else '교환'
     pending['request_type'] = request_type
-    rag_note, dispute_result = _dispute_block(text)
+    _rag_note, dispute_result = _dispute_block(text)
 
     if step is None:
         listed = get_orders(state['user_id'])
         orders = listed.get('orders') or []
-        order = _pick_order(orders, text)
+        delivered = _delivered_orders(orders)
+        window = [order for order in delivered if _within_return_window(order)]
         payload = listed
 
         if dispute_result is not None:
             payload = {**listed, 'dispute': dispute_result}
 
-        if order is None:
+        print(
+            f'[worker4] step=None delivered={[item.get("order_id") for item in delivered]} '
+            f'window={[item.get("order_id") for item in window]}'
+        )
+
+        if not orders:
             return finished(state, 'worker4', '조회할 주문이 없습니다.', payload)
-        
-        payload = {**payload, 'orders': [order]}
 
-        if not _within_return_window(order):
-            refuse = (
-                f"선택하신 제품({order['product_name']})은 수령 후 7일이 지나 "
-                f'{label} 접수가 어렵습니다.'
+        if not delivered:
+            return finished(state, 'worker4', _refuse_not_received(label), payload)
+
+        if not window:
+            latest = delivered[0]
+            payload = {**payload, 'orders': [latest]}
+            return finished(state, 'worker4', _refuse_window(label, latest), payload)
+
+        order = _pick_order(window, text)
+
+        if order is None:
+            pending['order_options'] = window
+            pending['reason'] = text
+            listed_window = {**payload, 'orders': window}
+            return waiting(
+                state,
+                'worker4',
+                'select_order',
+                _order_choice_lines(window, label),
+                pending,
+                listed_window,
             )
-            return finished(state, 'worker4', refuse + rag_note, payload)
 
+        payload = {**payload, 'orders': [order]}
         pending['order_id'] = order['order_id']
         pending['shown_address'] = order['ship_address']
         pending['order_summary'] = f"{order['product_name']} / {order.get('option') or '-'}"
+        pending['reason'] = text
         draft = build_confirm_message(
             f'아래 {label} 신청 정보가 맞습니까?',
             _confirm_fields(order, request_type),
         )
 
-        return waiting(state, 'worker4', 'confirm_order', draft + rag_note, pending, payload)
+        return waiting(state, 'worker4', 'confirm_order', draft, pending, payload)
 
     if step == 'confirm_order':
         answer = parse_yes_no(text)
@@ -326,28 +416,27 @@ def worker4(
                 state,
                 'worker4',
                 'select_method',
-                f'{label} 방법:\n- 지점 방문\n- 택배 수거',
+                f'{label} 방법을 선택해 주세요.\n- 지점 방문\n- 택배 수거',
                 pending,
+                {'ok': True, 'methods': ['STORE_VISIT', 'PICKUP']},
             )
 
         if answer == 'no':
             listed = get_orders(state['user_id'])
-            lines = ['어떤 주문인지 번호로 알려 주세요.']
-
-            for index, order in enumerate(listed.get('orders') or [], start=1):
-                lines.append(
-                    f"{index}. {order['order_id']} {order['product_name']} / {order.get('option') or '-'}"
-                )
-
-            pending['order_options'] = listed.get('orders') or []
+            window = [
+                order for order in _delivered_orders(listed.get('orders') or [])
+                if _within_return_window(order)
+            ]
+            options = window or _delivered_orders(listed.get('orders') or [])
+            pending['order_options'] = options
 
             return waiting(
                 state,
                 'worker4',
                 'select_order',
-                '\n'.join(lines),
+                _order_choice_lines(options, label),
                 pending,
-                listed,
+                {**listed, 'orders': options},
             )
 
         return waiting(
@@ -382,11 +471,10 @@ def worker4(
             )
 
         if not _within_return_window(chosen):
-            refuse = (
-                f"선택하신 제품({chosen['product_name']})은 수령 후 7일이 지나 "
-                f'{label} 접수가 어렵습니다.'
-            )
-            return finished(state, 'worker4', refuse)
+            if chosen.get('delivery_status') != 'DELIVERED':
+                return finished(state, 'worker4', _refuse_not_received(label, chosen))
+
+            return finished(state, 'worker4', _refuse_window(label, chosen))
 
         pending['order_id'] = chosen['order_id']
         pending['shown_address'] = chosen['ship_address']
@@ -415,7 +503,12 @@ def worker4(
             guide, geo = _store_guide(state['user_id'])
             extra = f'\n{guide}' if guide else '\n가까운 지점은 지점 문의로 다시 확인해 주세요.'
             draft = f"{label} 접수를 지점 방문으로 남겼습니다.{extra}"
-            payload = {'ok': True, 'request': created, 'stores': geo}
+            stores = geo.get('stores') if isinstance(geo, dict) else None
+            payload = {
+                'ok': True,
+                'request': created,
+                'stores': stores or [],
+            }
 
             return finished(state, 'worker4', draft, payload)
 
@@ -435,6 +528,7 @@ def worker4(
             'select_method',
             '지점 방문과 택배 수거 중에서 선택해 주세요.',
             pending,
+            {'ok': True, 'methods': ['STORE_VISIT', 'PICKUP']},
         )
 
     if step == 'confirm_address':

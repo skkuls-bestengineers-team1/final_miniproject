@@ -114,7 +114,18 @@ def build_chat_ui(
         if not isinstance(payload, dict) or not payload.get('ok'):
             continue
 
-        for index, item in enumerate(payload.get('stores') or []):
+        store_items = payload.get('stores') or []
+
+        if isinstance(store_items, dict):
+            store_items = store_items.get('stores') or []
+
+        if not isinstance(store_items, list):
+            store_items = []
+
+        for index, item in enumerate(store_items):
+            if not isinstance(item, dict):
+                continue
+
             name = item.get('store_name') or ''
             row = catalog.get(name) or {}
             stores.append({

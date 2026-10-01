@@ -78,7 +78,7 @@ def _days_since_delivery(
     if not delivered_date:
         return None
 
-    delivered = datetime.strptime(delivered_date, '%Y-%m-%d').date()
+    delivered = datetime.strptime(str(delivered_date)[:10], '%Y-%m-%d').date()
 
     return (date.today() - delivered).days
 

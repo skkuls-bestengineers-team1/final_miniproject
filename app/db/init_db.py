@@ -7,6 +7,7 @@
 
 import csv
 import json
+from datetime import date, timedelta
 from pathlib import Path
 
 from app.db.connection import get_conn
@@ -14,6 +15,66 @@ from app.db.connection import get_conn
 ROOT = Path(__file__).resolve().parents[2]
 SEED_DIR = ROOT / 'data' / 'seed'
 SCHEMA_PATH = Path(__file__).resolve().parent / 'schema.sql'
+
+
+def resolve_seed_date(
+        value,
+        today: date | None = None
+):
+    '''TODAY / TODAY-3 / TODAY+2 를 실행일 기준 ISO 날짜로 바꾼다.'''
+
+    if value is None or not isinstance(value, str):
+        return value
+
+    today = today or date.today()
+
+    if value == 'TODAY':
+        return today.isoformat()
+
+    if value.startswith('TODAY') and len(value) > 5 and value[5] in '+-':
+        return (today + timedelta(days=int(value[5:]))).isoformat()
+
+    return value
+
+
+def assert_unique_order_products(
+        orders: list[dict],
+        products: list[dict]
+) -> None:
+    '''같은 사용자 주문 내역에서 제품명이 겹치면 안 된다.'''
+
+    names = {
+        item['product_code']: item['product_name']
+        for item in products
+    }
+    seen: dict[str, set[str]] = {}
+
+    for order in orders:
+        user_id = order['user_id']
+        name = names[order['product_code']]
+        used = seen.setdefault(user_id, set())
+
+        if name in used:
+            raise ValueError(f'{user_id} 주문 제품명이 겹칩니다: {name}')
+
+        used.add(name)
+
+
+def _dated_orders(
+        rows: list[dict],
+        today: date | None = None
+) -> list[dict]:
+    today = today or date.today()
+
+    return [
+        {
+            **row,
+            'order_date': resolve_seed_date(row.get('order_date'), today),
+            'expected_date': resolve_seed_date(row.get('expected_date'), today),
+            'delivered_date': resolve_seed_date(row.get('delivered_date'), today),
+        }
+        for row in rows
+    ]
 
 
 def _load_json(
@@ -139,13 +200,17 @@ def init_db() -> dict:
             ['store_id', 'name', 'address', 'lat', 'lng']
         )
 
+        products = _load_json('products.json')
+        orders = _load_json('orders.json')
+        assert_unique_order_products(orders, products)
+
         _insert_rows(
             conn,
             '''
             INSERT INTO products (product_code, product_name, category_code, price)
             VALUES (%s, %s, %s, %s)
             ''',
-            _load_json('products.json'),
+            products,
             ['product_code', 'product_name', 'category_code', 'price']
         )
 
@@ -168,7 +233,7 @@ def init_db() -> dict:
             )
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             ''',
-            _load_json('orders.json'),
+            _dated_orders(orders),
             [
                 'order_id', 'user_id', 'product_code', 'option', 'order_date',
                 'delivery_status', 'expected_date', 'delivered_date', 'ship_address'

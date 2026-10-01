@@ -2,11 +2,11 @@
   {
     "order_id": "ORD-001",
     "user_id": "U001",
-    "product_code": "PRD-6001",
-    "option": "빨간색",
-    "order_date": "2026-09-28",
+    "product_code": "PRD-1003",
+    "option": "티타늄",
+    "order_date": "TODAY-3",
     "delivery_status": "PREPARING",
-    "expected_date": "2026-10-01",
+    "expected_date": "TODAY+2",
     "delivered_date": null,
     "ship_address": "AA동 BB아파트"
   },
@@ -15,9 +15,9 @@
     "user_id": "U001",
     "product_code": "PRD-6002",
     "option": "흰색",
-    "order_date": "2026-09-27",
+    "order_date": "TODAY-4",
     "delivery_status": "SHIPPED",
-    "expected_date": "2026-09-30",
+    "expected_date": "TODAY+1",
     "delivered_date": null,
     "ship_address": "AA동 BB아파트"
   },
@@ -26,9 +26,9 @@
     "user_id": "U001",
     "product_code": "PRD-1001",
     "option": "블랙",
-    "order_date": "2026-09-26",
+    "order_date": "TODAY-5",
     "delivery_status": "IN_TRANSIT",
-    "expected_date": "2026-09-29",
+    "expected_date": "TODAY+1",
     "delivered_date": null,
     "ship_address": "AA동 BB아파트"
   },
@@ -37,10 +37,10 @@
     "user_id": "U001",
     "product_code": "PRD-6001",
     "option": "빨간색",
-    "order_date": "2026-09-20",
+    "order_date": "TODAY-5",
     "delivery_status": "DELIVERED",
-    "expected_date": "2026-09-22",
-    "delivered_date": "2026-09-22",
+    "expected_date": "TODAY-3",
+    "delivered_date": "TODAY-3",
     "ship_address": "AA동 BB아파트"
   },
   {
@@ -48,10 +48,10 @@
     "user_id": "U001",
     "product_code": "PRD-2001",
     "option": "그레이",
-    "order_date": "2026-08-01",
+    "order_date": "TODAY-65",
     "delivery_status": "DELIVERED",
-    "expected_date": "2026-08-03",
-    "delivered_date": "2026-08-03",
+    "expected_date": "TODAY-62",
+    "delivered_date": "TODAY-60",
     "ship_address": "AA동 BB아파트"
   },
   {
@@ -59,9 +59,9 @@
     "user_id": "U002",
     "product_code": "PRD-1002",
     "option": "화이트",
-    "order_date": "2026-09-29",
+    "order_date": "TODAY-2",
     "delivery_status": "IN_TRANSIT",
-    "expected_date": "2026-10-02",
+    "expected_date": "TODAY+2",
     "delivered_date": null,
     "ship_address": "경기도 고양시 일산동구 장항동 101"
   },
@@ -70,10 +70,10 @@
     "user_id": "U002",
     "product_code": "PRD-6003",
     "option": "세이지 그린",
-    "order_date": "2026-09-21",
+    "order_date": "TODAY-6",
     "delivery_status": "DELIVERED",
-    "expected_date": "2026-09-23",
-    "delivered_date": "2026-09-23",
+    "expected_date": "TODAY-3",
+    "delivered_date": "TODAY-3",
     "ship_address": "경기도 고양시 일산동구 장항동 101"
   }
 ]

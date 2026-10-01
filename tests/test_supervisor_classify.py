@@ -1,4 +1,5 @@
-from app.graph.supervisor import classify_intent
+from app.graph.confirm import looks_like_continuation, parse_yes_no
+from app.graph.supervisor import classify_intent, classify_keyword, decide_target
 
 
 '''문의 CSV 분류.
@@ -50,6 +51,15 @@ def expected_target(
 def _rows() -> list[dict]:
     with CSV_PATH.open(encoding='utf-8') as file:
         return list(csv.DictReader(file))
+
+
+def test_classify_keyword_out_of_scope():
+    assert classify_keyword('결제가 두 번 됐어요') == 'fallback'
+    assert classify_keyword('결제가 두 번 되었습니다') == 'fallback'
+    assert classify_keyword('비밀번호를 잊어버렸습니다') == 'fallback'
+    assert classify_keyword('색상이 달라 교환하고 싶습니다') == 'worker4'
+    assert classify_keyword('주문 내역 보여주세요') == 'worker3'
+    assert classify_keyword('주문조회할래') == 'worker3'
 
 
 def test_expected_mapping_rules():
@@ -106,6 +116,12 @@ def test_llm_classification():
             row['inquiry_text']
         )
 
+        assert result.target == expected
+        checked += 1
+
+    assert checked >= 1
+
+
 @pytest.mark.parametrize(
     'text, expected',
     [
@@ -114,6 +130,8 @@ def test_llm_classification():
         ('내 주문 배송 언제 와?', 'worker3'),
         ('구매한 제품 환불하고 싶어', 'worker4'),
         ('비밀번호 변경하고 싶어', 'fallback'),
+        ('결제가 두 번 됐어요', 'fallback'),
+        ('결제가 두 번 되었습니다', 'fallback'),
     ]
 )
 def test_basic_llm_routes(text, expected):
@@ -121,6 +139,15 @@ def test_basic_llm_routes(text, expected):
     if not os.getenv('GEMINI_API_KEY') and not os.getenv('GOOGLE_API_KEY'):
         pytest.skip('LLM 키가 없어 분류 테스트를 건너뜁니다.')
 
-    result = classify_intent(text)
+    result = decide_target(text)
 
-    assert result.target == expected
+    assert result == expected
+
+
+def test_continuation_keywords_skip_llm():
+    assert looks_like_continuation('confirm_order', '이거 맞아')
+    assert looks_like_continuation('select_method', '지점 방문')
+    assert looks_like_continuation('select_method', '택배 수거')
+    assert not looks_like_continuation('select_method', '가까운 매장 알려줘')
+    assert parse_yes_no('이거 맞아') == 'yes'
+    assert parse_yes_no('아니요') == 'no'
