@@ -304,7 +304,7 @@ export function ChatWindow({
         </a>
       </p>
       {reserveStore ? (
-        <ReservationModal store={reserveStore} onClose={() => setReserveStore(null)} />
+        <ReservationModal userId={userId} store={reserveStore} onClose={() => setReserveStore(null)} />
       ) : null}
     </section>
   )

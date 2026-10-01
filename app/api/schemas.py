@@ -31,6 +31,27 @@ class SessionResetRequest(BaseModel):
     user_id: str = 'U001'
 
 
+class ReservationRequest(BaseModel):
+    '''지점 방문 예약 접수.'''
+
+    user_id: str = 'U001'
+    store_name: str
+    visit_date: str = Field(pattern=r'^\d{4}-\d{2}-\d{2}$')    # YYYY-MM-DD
+    visit_time: str = Field(pattern=r'^\d{2}:\d{2}$')           # HH:MM
+
+
+class ReservationItem(BaseModel):
+    reservation_id: int
+    user_id: str
+    store_id: str
+    store_name: str
+    store_address: str | None = None
+    visit_date: str
+    visit_time: str
+    status: str
+    created_at: str
+
+
 class RequestItem(BaseModel):
     request_id: int
     order_id: str

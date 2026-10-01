@@ -11,6 +11,7 @@ TABLES = (
     'orders',
     'requests',
     'inquiries',
+    'reservations',
 )
 
 EXPECTED = {
@@ -21,6 +22,7 @@ EXPECTED = {
     'orders': 7,
     'requests': 0,
     'inquiries': 0,
+    'reservations': 0,
 }
 
 

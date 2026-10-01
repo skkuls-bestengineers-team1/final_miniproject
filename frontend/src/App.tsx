@@ -1,7 +1,10 @@
 import { useState } from 'react'
 import { ChatWindow, QUICK_PROMPTS } from './components/ChatWindow'
 import { BotMark } from './components/BotMark'
+import { ReservationList } from './components/ReservationList'
 import './App.css'
+
+type Page = 'chat' | 'reservations'
 
 const USERS = [
   { id: 'U001', name: '박종석' },
@@ -19,7 +22,22 @@ const NAV = [
 export default function App() {
   const [userId, setUserId] = useState('U001')
   const [seedPrompt, setSeedPrompt] = useState<string | null>(null)
+  const [page, setPage] = useState<Page>('chat')
   const user = USERS.find((item) => item.id === userId) ?? USERS[0]
+
+  // '서비스 예약'만 예약 내역을 보여 주고, 나머지 메뉴는 아직 상담 화면으로 보낸다.
+  function pageOf(item: string): Page {
+    return item === '서비스 예약' ? 'reservations' : 'chat'
+  }
+
+  function isCurrent(item: string) {
+    return page === 'reservations' ? item === '서비스 예약' : item === '전문상담'
+  }
+
+  function openChat() {
+    setPage('chat')
+    window.setTimeout(() => document.getElementById('chat')?.scrollIntoView({ behavior: 'smooth' }), 0)
+  }
 
   return (
     <div className="shell">
@@ -27,7 +45,14 @@ export default function App() {
         공부용 상담 데모입니다. 기본 사용자는 {USERS[0].name}({USERS[0].id})입니다.
       </div>
       <header className="topbar">
-        <a className="logo" href="#chat">
+        <a
+          className="logo"
+          href="#chat"
+          onClick={(event) => {
+            event.preventDefault()
+            setPage('chat')
+          }}
+        >
           <span className="wordmark">SASUNG</span>
           <span>사성전자서비스</span>
         </a>
@@ -35,8 +60,13 @@ export default function App() {
           {NAV.map((item) => (
             <a
               key={item}
-              href="#chat"
-              className={item === '전문상담' ? 'current' : undefined}
+              href={pageOf(item) === 'reservations' ? '#reservations' : '#chat'}
+              className={isCurrent(item) ? 'current' : undefined}
+              aria-current={isCurrent(item) ? 'page' : undefined}
+              onClick={(event) => {
+                event.preventDefault()
+                setPage(pageOf(item))
+              }}
             >
               {item}
             </a>
@@ -59,22 +89,35 @@ export default function App() {
       </header>
 
       <section className="hero">
-        <p className="kicker">사성 CS Bot 시작</p>
+        <p className="kicker">{page === 'reservations' ? '서비스 예약' : '사성 CS Bot 시작'}</p>
         <h1>
-          <span>신속한 상담</span>
-          <span>고객 편의</span>
-          <em>사성 CS Bot</em>
+          {page === 'reservations' ? (
+            <span>내 방문 예약</span>
+          ) : (
+            <>
+              <span>신속한 상담</span>
+              <span>고객 편의</span>
+              <em>사성 CS Bot</em>
+            </>
+          )}
         </h1>
-        <ChatWindow
-          userId={user.id}
-          userName={user.name}
-          seedPrompt={seedPrompt}
-          onSeedConsumed={() => setSeedPrompt(null)}
-        />
-        <h2 className="features-title">사성 CS Bot으로 확인해 보세요</h2>
+        {/* 탭을 오가도 대화가 남도록 채팅은 숨기기만 한다. */}
+        <div hidden={page !== 'chat'}>
+          <ChatWindow
+            userId={user.id}
+            userName={user.name}
+            seedPrompt={seedPrompt}
+            onSeedConsumed={() => setSeedPrompt(null)}
+          />
+        </div>
+        {page === 'reservations' ? (
+          <ReservationList userId={user.id} userName={user.name} onStartChat={openChat} />
+        ) : (
+          <h2 className="features-title">사성 CS Bot으로 확인해 보세요</h2>
+        )}
       </section>
 
-      <section className="features">
+      <section className="features" hidden={page !== 'chat'}>
         <div className="feature-grid">
           <article>
             <h3>가까운 지점과 재고를 바로 확인할 수 있어요</h3>
@@ -96,7 +139,7 @@ export default function App() {
       <button
         type="button"
         className="fab"
-        onClick={() => document.getElementById('chat')?.scrollIntoView({ behavior: 'smooth' })}
+        onClick={openChat}
       >
         <BotMark size={36} />
         <span>사성 CS Bot에게 궁금한 점을 물어보세요.</span>
