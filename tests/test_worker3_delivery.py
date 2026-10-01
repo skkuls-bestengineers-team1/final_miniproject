@@ -5,6 +5,7 @@ from unittest.mock import Mock
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 from app.graph.state import initial_state
+from app.tools import delivery_tools
 from app.workers import worker3_delivery as delivery
 
 
@@ -23,11 +24,17 @@ def setup_model(monkeypatch, replies):
 
 def test_orders_then_delivery_preserves_evidence(monkeypatch):
     orders = {'ok': True, 'orders': [{'order_id': 'O1'}]}
-    status = {'ok': True, 'order_id': 'O1', 'delivery_status': 'DELIVERED'}
+    order = {
+        'ok': True,
+        'order_id': 'O1',
+        'product_code': 'PRD-6001',
+        'delivery_status': 'DELIVERED',
+    }
     get_orders = Mock(return_value=orders)
-    get_status = Mock(return_value=status)
-    monkeypatch.setattr(delivery, 'get_orders', get_orders)
-    monkeypatch.setattr(delivery, 'get_delivery_status', get_status)
+    get_order = Mock(return_value=order)
+    monkeypatch.setattr(delivery_tools, 'get_orders', get_orders)
+    monkeypatch.setattr(delivery_tools, 'get_order', get_order)
+    monkeypatch.setattr(delivery_tools, '_latest_delivery_event', Mock(return_value=None))
     model, llm = setup_model(monkeypatch, [
         tool_reply('get_orders', {}),
         tool_reply('get_delivery_status', {'order_id': 'O1'}, 'call-2'),
@@ -37,16 +44,18 @@ def test_orders_then_delivery_preserves_evidence(monkeypatch):
     result = delivery.worker3(state)
 
     get_orders.assert_called_once_with('U1')
-    get_status.assert_called_once_with('O1', 'U1')
+    get_order.assert_called_once_with('O1', 'U1')
     assert result['draft_answer'] == '배송 완료되었습니다.'
-    assert result['tool_results'] == [orders, status]
-    assert 'user_id' not in llm.bind_tools.call_args.args[0][1].args
+    assert result['tool_results'][0] == orders
+    assert result['tool_results'][1]['order_id'] == 'O1'
+    assert result['tool_results'][1]['delivery_status'] == 'DELIVERED'
+    assert 'user_id' not in llm.bind_tools.call_args.args[0][2].args
     assert sum(isinstance(message, ToolMessage) for message in model.invoke.call_args.args[0]) == 2
 
 
 def test_cannot_override_user_id(monkeypatch):
     lookup = Mock()
-    monkeypatch.setattr(delivery, 'get_delivery_status', lookup)
+    monkeypatch.setattr(delivery_tools, 'get_order', lookup)
     setup_model(monkeypatch, [
         tool_reply('get_delivery_status', {'order_id': 'O2', 'user_id': 'U2'}),
         AIMessage(content='조회할 수 없습니다.'),
@@ -59,7 +68,7 @@ def test_cannot_override_user_id(monkeypatch):
 
 def test_lookup_failure_is_returned_to_model(monkeypatch):
     monkeypatch.setattr(
-        delivery,
+        delivery_tools,
         'get_orders',
         Mock(side_effect=RuntimeError('database unavailable')),
     )
@@ -80,7 +89,7 @@ def test_model_failure_and_loop_limit(monkeypatch):
 
     looping = tool_reply('get_orders', {})
     model, _ = setup_model(monkeypatch, [looping] * delivery.MAX_TOOL_ROUNDS)
-    monkeypatch.setattr(delivery, 'get_orders', Mock(return_value={'ok': True, 'orders': []}))
+    monkeypatch.setattr(delivery_tools, 'get_orders', Mock(return_value={'ok': True, 'orders': []}))
     result = delivery.worker3(state)
 
     assert '처리하지 못했습니다' in result['draft_answer']
@@ -89,7 +98,7 @@ def test_model_failure_and_loop_limit(monkeypatch):
 
 def test_address_change_request_does_not_pause_graph(monkeypatch):
     created = {'ok': True, 'request_id': 9, 'status': 'PENDING'}
-    monkeypatch.setattr(delivery, 'request_address_change', Mock(return_value=created))
+    monkeypatch.setattr(delivery_tools, 'request_address_change', Mock(return_value=created))
     setup_model(monkeypatch, [
         tool_reply('request_address_change', {
             'order_id': 'ORD-001',

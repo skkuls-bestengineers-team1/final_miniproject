@@ -240,6 +240,28 @@ def init_db() -> dict:
             ]
         )
 
+        _insert_rows(
+            conn,
+            '''
+            INSERT INTO delivery (
+                order_id, product_code, event_seq, delivery_status, carrier_code,
+                tracking_number, driver_contact_phone, delivery_request,
+                actual_delivery_address, expected_delivery_at, delivered_at,
+                delay_reason, delay_reason_status, occurred_at, received_at,
+                source, external_event_id
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ''',
+            _load_json('delivery.json'),
+            [
+                'order_id', 'product_code', 'event_seq', 'delivery_status', 'carrier_code',
+                'tracking_number', 'driver_contact_phone', 'delivery_request',
+                'actual_delivery_address', 'expected_delivery_at', 'delivered_at',
+                'delay_reason', 'delay_reason_status', 'occurred_at', 'received_at',
+                'source', 'external_event_id',
+            ],
+        )
+
         _load_dispute_docs(conn)
 
         conn.commit()
@@ -250,7 +272,7 @@ def init_db() -> dict:
             ).fetchone()['n']
             for table in (
                 'users', 'stores', 'products', 'inventory',
-                'orders', 'requests', 'inquiries', 'reservations', 'dispute_docs'
+                'orders', 'delivery', 'requests', 'inquiries', 'reservations', 'dispute_docs'
             )
         }
 
