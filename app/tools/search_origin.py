@@ -15,6 +15,43 @@ from app.tools.user_tools import get_user_address
 ORIGIN_TTL_MINUTES = 30                 # 사용자는 이동하므로 오래된 기준점은 다시 묻는다.
 TIME_FORMAT = '%Y-%m-%d %H:%M:%S'
 
+# 기준을 바꿔 달라는 말. 서버는 브라우저 위치를 직접 알 수 없어 'current'면 [현재 위치 사용] 버튼을 다시 띄운다.
+CURRENT_ORIGIN_WORDS = (
+    '현재 위치', '현재위치', '현재 주소', '현재주소', '지금 위치', '지금 있는',
+    '내 위치', '내위치', '여기서', '여기 근처', '이 근처',
+)
+REGISTERED_ORIGIN_WORDS = (
+    '등록 주소', '등록주소', '등록된 주소', '회원 주소', '우리 집', '우리집', '집 근처', '집 주변',
+)
+ASK_CURRENT_POSITION_MESSAGE = (
+    '현재 위치로 찾으려면 아래 [현재 위치 사용]을 눌러 주세요.\n'
+    '다른 곳을 기준으로 하려면 역·동 이름을 입력해 주세요.'
+)
+
+
+def _last_index(
+        text: str,
+        words: tuple[str, ...]
+) -> int:
+    return max((text.rfind(word) for word in words), default=-1)
+
+
+def origin_request_from_text(
+        text: str
+) -> str | None:
+    '''"현재 위치 기준으로", "등록 주소로"처럼 기준을 바꿔 달라는 말이면 'current' / 'registered'.
+
+    "등록 주소 말고 현재 주소"처럼 둘 다 있으면 뒤에 나온 쪽을 따른다.
+    '''
+
+    current_at = _last_index(text or '', CURRENT_ORIGIN_WORDS)
+    registered_at = _last_index(text or '', REGISTERED_ORIGIN_WORDS)
+
+    if current_at < 0 and registered_at < 0:
+        return None
+
+    return 'current' if current_at > registered_at else 'registered'
+
 
 def _make_origin(
         lat: float,

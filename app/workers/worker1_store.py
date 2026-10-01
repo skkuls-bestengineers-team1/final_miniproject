@@ -3,8 +3,11 @@
 담당: 박서영
 검색 기준점(search_origin)에서 가까운 지점 3곳을 안내한다. 검증은 지점 순서·이름을 Tool과 대조.
 발화에 위치가 있으면("용산역 근처 매장") 묻지 않고 그 위치로 찾는다.
+"현재 위치 기준으로", "등록 주소로"처럼 기준을 바꿔 달라고 하면 그대로 따른다.
 기준점이 없으면 한 번 묻는다: 현재 위치 / 주소 입력 / 등록 주소.
 '''
+
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -12,7 +15,14 @@ from app.config import settings
 from app.graph.confirm import finished, latest_user_text, validation_retry_update, waiting
 from app.graph.state import State
 from app.llm import get_llm
-from app.tools.search_origin import is_fresh, registered_origin, resolve_search_origin, typed_origin
+from app.tools.search_origin import (
+    ASK_CURRENT_POSITION_MESSAGE,
+    is_fresh,
+    origin_request_from_text,
+    registered_origin,
+    resolve_search_origin,
+    typed_origin,
+)
 from app.tools.store_tools import find_nearest_stores
 from app.tools.user_tools import get_user
 
@@ -30,21 +40,27 @@ MAX_ORIGIN_ATTEMPTS = 2     # 주소를 이만큼 못 찾으면 등록 주소로
 class LocationQuery(BaseModel):
     '''발화 속 기준 위치 표현.'''
 
-    location_text: str | None = None
+    location_text: str | None = None                                   # 기준 지명 (예: "용산역")
+    origin_request: Literal['current', 'registered'] | None = None     # 기준을 바꿔 달라는 말
 
 
 def _extract_location(
         text: str
-) -> str | None:
-    '''"용산역 근처 매장"처럼 기준이 되는 지명을 말했으면 그 지명. 없거나 LLM을 못 쓰면 None.'''
+) -> LocationQuery:
+    '''기준 지명과 "현재 위치로 / 등록 주소로" 요청을 뽑는다. 요청은 키워드가 우선이고, LLM이 다른 표현을 보완한다.'''
+
+    keyword_request = origin_request_from_text(text)
 
     if not settings.gemini_api_key:
-        return None
+        return LocationQuery(origin_request=keyword_request)
 
     prompt = f'''당신은 가까운 매장 문의에서 기준 위치를 뽑는 역할입니다.
 
-- 기준이 되는 지명(역·동·구·랜드마크 이름)을 말했으면 그 지명만 location_text에 씁니다. (예: "용산역 근처 매장 알려줘" → "용산역")
-- "나랑 가까운", "여기서", "우리 집 근처"처럼 지명이 없으면 null로 둡니다.
+- location_text: 기준이 되는 지명(역·동·구·랜드마크 이름)을 말했으면 그 지명만 씁니다. (예: "용산역 근처 매장 알려줘" → "용산역") 지명이 없으면 null.
+- origin_request: 기준을 직접 지정했을 때만 씁니다. 아니면 null.
+  - "현재 위치", "지금 있는 곳", "여기서"처럼 지금 있는 곳을 기준으로 해 달라고 하면 "current"
+  - "등록 주소", "우리 집"처럼 회원 등록 주소를 기준으로 해 달라고 하면 "registered"
+  - "A 말고 B"라고 하면 B를 따릅니다. "나랑 가까운"처럼 기준을 정하지 않았으면 null.
 
 발화: {text}'''
 
@@ -53,12 +69,29 @@ def _extract_location(
 
     except Exception as exc:
         print(f'기준 위치 추출 생략: {exc}')
-        return None
+        return LocationQuery(origin_request=keyword_request)
 
     if result is None:
-        return None
+        return LocationQuery(origin_request=keyword_request)
 
-    return (result.location_text or '').strip() or None
+    return LocationQuery(
+        location_text=(result.location_text or '').strip() or None,
+        origin_request=keyword_request or result.origin_request,
+    )
+
+
+def _ask_current_position(
+        state: State,
+        pending: dict
+) -> dict:
+    '''현재 위치는 브라우저만 알 수 있어 [현재 위치 사용] 버튼을 다시 띄운다.'''
+
+    update = waiting(state, 'worker1', 'ask_search_origin', ASK_CURRENT_POSITION_MESSAGE, pending)
+    update['search_origin_asked'] = True
+    # 남아 있는 기준점을 다음 턴에 버튼 선택으로 오인하지 않도록 비운다.
+    update['search_origin'] = None
+
+    return update
 
 
 def _answer(
@@ -109,8 +142,13 @@ def _handle_origin_answer(
     if is_fresh(origin):
         return _answer(state, origin)
 
-    # 버튼 대신 입력한 답: "등록 주소"라고 했거나 주소를 입력했다.
-    if '등록' in text:
+    # 버튼 대신 입력한 답: "현재 위치"·"등록 주소"라고 했거나 주소를 입력했다.
+    request = origin_request_from_text(text)
+
+    if request == 'current':
+        return waiting(state, 'worker1', 'ask_search_origin', ASK_CURRENT_POSITION_MESSAGE, pending)
+
+    if request == 'registered' or '등록' in text:
         origin = registered_origin(user_id)
 
     else:
@@ -149,11 +187,21 @@ def worker1(
     if state.get('step') == 'ask_search_origin':
         return _handle_origin_answer(state, pending, text)
 
-    # "용산역 근처 매장"처럼 기준 위치를 직접 말한 경우
-    location_text = _extract_location(text)
+    query = _extract_location(text)
 
-    if location_text:
-        origin = typed_origin(location_text)
+    # "현재 위치 기준으로" / "등록 주소로"처럼 기준을 직접 지정한 경우
+    if query.origin_request == 'current':
+        return _ask_current_position(state, {})
+
+    if query.origin_request == 'registered':
+        origin = registered_origin(state['user_id'])
+
+        if origin:
+            return _answer(state, origin)
+
+    # "용산역 근처 매장"처럼 기준 위치를 직접 말한 경우
+    if query.location_text:
+        origin = typed_origin(query.location_text)
 
         if origin:
             return _answer(state, origin)

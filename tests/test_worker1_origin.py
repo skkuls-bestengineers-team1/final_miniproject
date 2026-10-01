@@ -47,7 +47,7 @@ def tools(monkeypatch):
     monkeypatch.setattr(w, 'typed_origin', fake_typed)
     monkeypatch.setattr(w, 'registered_origin', fake_registered)
     monkeypatch.setattr(w, 'get_user', lambda user_id: {'ok': True, 'name': '박종석'})
-    monkeypatch.setattr(w, '_extract_location', lambda text: None)
+    monkeypatch.setattr(w, '_extract_location', lambda text: w.LocationQuery())
     monkeypatch.setattr(search_origin, 'registered_origin', fake_registered)
 
     return calls
@@ -116,7 +116,7 @@ def test_unknown_address_retries_then_registered(tools):
 
 
 def test_location_in_utterance_skips_question(monkeypatch, tools):
-    monkeypatch.setattr(w, '_extract_location', lambda text: '용산역')
+    monkeypatch.setattr(w, '_extract_location', lambda text: w.LocationQuery(location_text='용산역'))
 
     update = w.worker1(_state('용산역 근처 매장 알려줘'))
 
@@ -168,3 +168,46 @@ def test_radius_gives_up_after_widest(monkeypatch):
     assert not result['ok']
     assert result['error_code'] == 'EMPTY_RESULT'
     assert '200km' in result['message']
+
+
+def test_origin_request_from_text():
+    assert search_origin.origin_request_from_text('등록 주소 말고 현재 주소 기준으로 가까운 지점 알려주세요') == 'current'
+    assert search_origin.origin_request_from_text('현재 위치 말고 등록 주소로 찾아 줘') == 'registered'
+    assert search_origin.origin_request_from_text('여기서 가까운 매장') == 'current'
+    assert search_origin.origin_request_from_text('나랑 가까운 지점 어디야') is None
+
+
+def test_current_request_reasks_even_with_saved_origin(monkeypatch, tools):
+    monkeypatch.setattr(w, '_extract_location', lambda text: w.LocationQuery(origin_request='current'))
+    saved = dict(REGISTERED, at=_now())
+
+    update = w.worker1(_state(
+        '등록 주소 말고 현재 주소 기준으로 가까운 지점 알려주세요',
+        search_origin=saved,
+        search_origin_asked=True,
+    ))
+
+    assert update['step'] == 'ask_search_origin'
+    assert '[현재 위치 사용]' in update['draft_answer']
+    # 남은 등록 주소를 다음 턴에 버튼 선택으로 오인하지 않도록 비운다.
+    assert update['search_origin'] is None
+    assert tools['nearest_origin'] is None
+
+
+def test_registered_request_uses_registered(monkeypatch, tools):
+    monkeypatch.setattr(w, '_extract_location', lambda text: w.LocationQuery(origin_request='registered'))
+    current = search_origin.current_origin(37.49, 127.03)
+
+    update = w.worker1(_state('등록 주소 기준으로 다시 알려줘', search_origin=current, search_origin_asked=True))
+
+    assert '등록 주소 기준' in update['draft_answer']
+
+
+def test_typed_current_while_asking_points_to_button(tools):
+    update = w.worker1(_state('현재 위치요', step='ask_search_origin', search_origin_asked=True))
+
+    assert update['step'] == 'ask_search_origin'
+    assert '[현재 위치 사용]' in update['draft_answer']
+    # 주소로 보고 찾지 않으며, 실패 횟수도 세지 않는다.
+    assert tools['typed'] == []
+    assert 'origin_attempts' not in update['pending_data']
