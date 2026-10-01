@@ -19,6 +19,7 @@ from app.api.schemas import (
     NotificationItem,
     NotificationResponse,
     RequestItem,
+    ReservationCancelRequest,
     ReservationItem,
     ReservationRequest,
     SessionResetRequest,
@@ -30,7 +31,7 @@ from app.graph.state import initial_state
 from app.llm import content_text
 from app.redis_store.checkpointer import close_checkpointer, get_checkpointer
 from app.tools.request_tools import mark_request_status
-from app.tools.reservation_tools import create_reservation, list_reservations
+from app.tools.reservation_tools import cancel_reservation, create_reservation, list_reservations
 from app.tools.search_origin import current_origin, registered_origin
 
 graph = None
@@ -245,11 +246,32 @@ def reserve_visit(
     user_id = x_user_id or body.user_id or settings.default_user_id
     result = create_reservation(user_id, body.store_name, body.visit_date, body.visit_time)
 
+    return _reservation_response(result)
+
+
+def _reservation_response(
+        result: dict
+) -> ReservationItem:
+    '''예약 Tool 결과를 응답으로. 실패면 NOT_FOUND는 404, 나머지는 400과 안내 문구.'''
+
     if not result.get('ok'):
         status_code = 404 if result.get('error_code', '').endswith('NOT_FOUND') else 400
         raise HTTPException(status_code=status_code, detail=result.get('message'))
 
     return ReservationItem(**result)
+
+
+@app.post('/reservations/{reservation_id}/cancel', response_model=ReservationItem)
+def cancel_visit(
+        reservation_id: int,
+        body: ReservationCancelRequest,
+        x_user_id: str | None = Header(default=None),
+) -> ReservationItem:
+    '''서비스 예약 탭의 "예약 취소". 본인의 지나지 않은 예약만 취소한다.'''
+
+    user_id = x_user_id or body.user_id or settings.default_user_id
+
+    return _reservation_response(cancel_reservation(user_id, reservation_id))
 
 
 @app.get('/reservations/{user_id}', response_model=list[ReservationItem])

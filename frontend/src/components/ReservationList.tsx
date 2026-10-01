@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { fetchReservations } from '../api'
+import { cancelReservation, fetchReservations } from '../api'
 import type { Reservation } from '../api'
 
 type ReservationListProps = {
@@ -32,6 +32,31 @@ export function ReservationList({ userId, userName, onStartChat }: ReservationLi
   const [items, setItems] = useState<Reservation[] | null>(null)
   const [error, setError] = useState('')
   const [reloadKey, setReloadKey] = useState(0)
+  const [cancelling, setCancelling] = useState<number | null>(null)
+
+  async function onCancel(item: Reservation) {
+    if (cancelling !== null) {
+      return
+    }
+
+    if (!window.confirm(`${formatVisit(item)} ${item.store_name} 예약을 취소할까요?`)) {
+      return
+    }
+
+    setCancelling(item.reservation_id)
+    setError('')
+
+    try {
+      const updated = await cancelReservation(userId, item.reservation_id)
+      setItems((current) =>
+        (current ?? []).map((row) => (row.reservation_id === updated.reservation_id ? updated : row)),
+      )
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : '예약을 취소하지 못했습니다.')
+    } finally {
+      setCancelling(null)
+    }
+  }
 
   useEffect(() => {
     let alive = true
@@ -103,6 +128,16 @@ export function ReservationList({ userId, userName, onStartChat }: ReservationLi
                 <div className="reservation-side">
                   <span className={`reservation-status ${isPast ? 'muted' : ''}`}>{statusLabel(item, isPast)}</span>
                   <small>예약 번호 {item.reservation_id}</small>
+                  {isPast ? null : (
+                    <button
+                      type="button"
+                      className="reservation-cancel"
+                      onClick={() => void onCancel(item)}
+                      disabled={cancelling !== null}
+                    >
+                      {cancelling === item.reservation_id ? '취소 중…' : '예약 취소'}
+                    </button>
+                  )}
                 </div>
               </li>
             )

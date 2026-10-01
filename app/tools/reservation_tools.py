@@ -2,7 +2,8 @@
 
 담당: 박서영
 예약 팝업(ReservationModal)의 "예약 접수"가 POST /reservations로 이 Tool을 부른다.
-날짜·시간·지점·중복은 코드로 검증한다.
+서비스 예약 탭의 "예약 취소"는 POST /reservations/{id}/cancel로 cancel_reservation을 부른다.
+날짜·시간·지점·중복·본인 여부는 코드로 검증한다. 취소는 행을 지우지 않고 status를 CANCELLED로 바꾼다.
 '''
 
 from datetime import datetime
@@ -12,6 +13,13 @@ from psycopg.errors import UniqueViolation
 from app.db.connection import execute, fail, fetch_all, fetch_one
 
 RESERVATION_SLOTS = ('10:00', '11:00', '14:00', '15:00', '16:00')   # 프론트 SLOTS와 같아야 한다.
+
+SELECT_RESERVATION = '''
+    SELECT r.reservation_id, r.user_id, r.store_id, s.name AS store_name, s.address AS store_address,
+           r.visit_date, r.visit_time, r.status, r.created_at, r.cancelled_at
+    FROM reservations r
+    JOIN stores s ON s.store_id = r.store_id
+'''
 
 
 def _parse_visit(
@@ -29,13 +37,7 @@ def _reservation_row(
         reservation_id: int
 ) -> dict | None:
     return fetch_one(
-        '''
-        SELECT r.reservation_id, r.user_id, r.store_id, s.name AS store_name, s.address AS store_address,
-               r.visit_date, r.visit_time, r.status, r.created_at
-        FROM reservations r
-        JOIN stores s ON s.store_id = r.store_id
-        WHERE r.reservation_id = %s
-        ''',
+        f'{SELECT_RESERVATION} WHERE r.reservation_id = %s',
         (reservation_id,)
     )
 
@@ -88,19 +90,53 @@ def create_reservation(
     }
 
 
+def cancel_reservation(
+        user_id: str,
+        reservation_id: int
+) -> dict:
+    '''본인의 아직 지나지 않은 예약을 취소한다. 성공하면 바뀐 예약 정보, 실패하면 fail().'''
+
+    row = _reservation_row(reservation_id)
+
+    # 다른 사람의 예약은 있어도 없는 것처럼 답한다.
+    if row is None or row['user_id'] != user_id:
+        return fail('RESERVATION_NOT_FOUND', '예약을 찾지 못했습니다.')
+
+    if row['status'] == 'CANCELLED':
+        return fail('ALREADY_CANCELLED', '이미 취소된 예약입니다.')
+
+    visit_at = _parse_visit(row['visit_date'], row['visit_time'])
+
+    if visit_at is not None and visit_at <= datetime.now():
+        return fail('PAST_RESERVATION', '지난 예약은 취소할 수 없습니다.')
+
+    # 동시에 두 번 눌러도 한 번만 바뀌도록 BOOKED일 때만 갱신한다.
+    updated = execute(
+        '''
+        UPDATE reservations
+        SET status = 'CANCELLED',
+            cancelled_at = TO_CHAR(NOW(), 'YYYY-MM-DD HH24:MI:SS')
+        WHERE reservation_id = %s AND status = 'BOOKED'
+        RETURNING reservation_id
+        ''',
+        (reservation_id,)
+    )
+
+    if not updated:
+        return fail('ALREADY_CANCELLED', '이미 취소된 예약입니다.')
+
+    return {
+        'ok': True,
+        **_reservation_row(reservation_id),
+    }
+
+
 def list_reservations(
         user_id: str
 ) -> list[dict]:
-    '''사용자의 예약 목록. 방문일·시간 순.'''
+    '''사용자의 예약 목록(취소 포함). 방문일·시간 순.'''
 
     return fetch_all(
-        '''
-        SELECT r.reservation_id, r.user_id, r.store_id, s.name AS store_name, s.address AS store_address,
-               r.visit_date, r.visit_time, r.status, r.created_at
-        FROM reservations r
-        JOIN stores s ON s.store_id = r.store_id
-        WHERE r.user_id = %s
-        ORDER BY r.visit_date, r.visit_time, r.reservation_id
-        ''',
+        f'{SELECT_RESERVATION} WHERE r.user_id = %s ORDER BY r.visit_date, r.visit_time, r.reservation_id',
         (user_id,)
     )

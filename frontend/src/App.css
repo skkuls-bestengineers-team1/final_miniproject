@@ -867,6 +867,22 @@ footer {
   color: var(--muted);
 }
 
+.reservation-cancel {
+  justify-self: end;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: #c62828;
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.reservation-cancel:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
 @media (max-width: 640px) {
   .reservation-page {
     padding: 18px 16px 20px;

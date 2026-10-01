@@ -107,6 +107,7 @@ export type Reservation = {
   visit_time: string
   status: string
   created_at: string
+  cancelled_at: string | null
 }
 
 // 서버가 400/404로 돌려준 detail(안내 문구)을 그대로 보여 준다.
@@ -141,6 +142,23 @@ export async function createReservation(
 
   if (!response.ok) {
     throw new Error(await errorDetail(response, '예약을 접수하지 못했습니다.'))
+  }
+
+  return response.json()
+}
+
+export async function cancelReservation(userId: string, reservationId: number): Promise<Reservation> {
+  const response = await fetch(`${API_BASE}/reservations/${reservationId}/cancel`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-User-Id': userId,
+    },
+    body: JSON.stringify({ user_id: userId }),
+  })
+
+  if (!response.ok) {
+    throw new Error(await errorDetail(response, '예약을 취소하지 못했습니다.'))
   }
 
   return response.json()
