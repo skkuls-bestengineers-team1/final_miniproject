@@ -185,7 +185,7 @@ def init_db() -> dict:
             ).fetchone()['n']
             for table in (
                 'users', 'stores', 'products', 'inventory',
-                'orders', 'requests', 'inquiries', 'dispute_docs'
+                'orders', 'requests', 'inquiries', 'reservations', 'dispute_docs'
             )
         }
 

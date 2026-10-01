@@ -19,6 +19,8 @@ from app.api.schemas import (
     NotificationItem,
     NotificationResponse,
     RequestItem,
+    ReservationItem,
+    ReservationRequest,
     SessionResetRequest,
 )
 from app.config import settings
@@ -28,6 +30,7 @@ from app.graph.state import initial_state
 from app.llm import content_text
 from app.redis_store.checkpointer import close_checkpointer, get_checkpointer
 from app.tools.request_tools import mark_request_status
+from app.tools.reservation_tools import create_reservation, list_reservations
 from app.tools.search_origin import current_origin, registered_origin
 
 graph = None
@@ -230,6 +233,30 @@ def reset_chat_session(
     user_id = x_user_id or body.user_id or settings.default_user_id
     _clear_thread(compiled, user_id)
     return {'ok': True}
+
+
+@app.post('/reservations', response_model=ReservationItem)
+def reserve_visit(
+        body: ReservationRequest,
+        x_user_id: str | None = Header(default=None),
+) -> ReservationItem:
+    '''예약 팝업의 "예약 접수". 검증에 실패하면 400과 안내 문구를 돌려준다.'''
+
+    user_id = x_user_id or body.user_id or settings.default_user_id
+    result = create_reservation(user_id, body.store_name, body.visit_date, body.visit_time)
+
+    if not result.get('ok'):
+        status_code = 404 if result.get('error_code', '').endswith('NOT_FOUND') else 400
+        raise HTTPException(status_code=status_code, detail=result.get('message'))
+
+    return ReservationItem(**result)
+
+
+@app.get('/reservations/{user_id}', response_model=list[ReservationItem])
+def user_reservations(
+        user_id: str
+) -> list[ReservationItem]:
+    return [ReservationItem(**row) for row in list_reservations(user_id)]
 
 
 @app.get('/admin/requests', response_model=list[RequestItem])
