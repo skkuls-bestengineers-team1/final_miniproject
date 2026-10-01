@@ -55,6 +55,12 @@ export default function App() {
     window.setTimeout(() => document.getElementById('chat')?.scrollIntoView({ behavior: 'smooth' }), 0)
   }
 
+  function openNearbyStoreChat() {
+    setSeedPrompt('가까운 매장 알려줘')
+    setPage('chat')
+    window.setTimeout(() => document.getElementById('chat')?.scrollIntoView({ behavior: 'smooth' }), 0)
+  }
+
   return (
     <div className="shell">
       <div className="promo">
@@ -138,7 +144,7 @@ export default function App() {
             }}
           />
         ) : page === 'reservations' ? (
-          <ReservationList userId={user.id} userName={user.name} onStartChat={openChat} />
+          <ReservationList userId={user.id} userName={user.name} onStartChat={openNearbyStoreChat} />
         ) : (
           <h2 className="features-title">사성 CS Bot으로 확인해 보세요</h2>
         )}
