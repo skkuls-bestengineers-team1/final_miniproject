@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { ChatWindow, QUICK_PROMPTS } from './components/ChatWindow'
 import { BotMark } from './components/BotMark'
+import { FaqList } from './components/FaqList'
 import { ReservationList } from './components/ReservationList'
 import './App.css'
 
-type Page = 'chat' | 'reservations'
+type Page = 'chat' | 'faq' | 'reservations'
 
 const USERS = [
   { id: 'U001', name: '박종석' },
@@ -12,8 +13,8 @@ const USERS = [
 ]
 
 const NAV = [
-  '스스로해결',
-  '전문상담',
+  '자주묻는질문(FAQ)',
+  '사성 AI 상담',
   '서비스 안내',
   '서비스 예약',
   '고객의 소리',
@@ -25,13 +26,28 @@ export default function App() {
   const [page, setPage] = useState<Page>('chat')
   const user = USERS.find((item) => item.id === userId) ?? USERS[0]
 
-  // '서비스 예약'만 예약 내역을 보여 주고, 나머지 메뉴는 아직 상담 화면으로 보낸다.
   function pageOf(item: string): Page {
-    return item === '서비스 예약' ? 'reservations' : 'chat'
+    if (item === '자주묻는질문(FAQ)') {
+      return 'faq'
+    }
+
+    if (item === '서비스 예약') {
+      return 'reservations'
+    }
+
+    return 'chat'
   }
 
   function isCurrent(item: string) {
-    return page === 'reservations' ? item === '서비스 예약' : item === '전문상담'
+    if (page === 'faq') {
+      return item === '자주묻는질문(FAQ)'
+    }
+
+    if (page === 'reservations') {
+      return item === '서비스 예약'
+    }
+
+    return item === '사성 AI 상담'
   }
 
   function openChat() {
@@ -60,7 +76,7 @@ export default function App() {
           {NAV.map((item) => (
             <a
               key={item}
-              href={pageOf(item) === 'reservations' ? '#reservations' : '#chat'}
+              href={pageOf(item) === 'faq' ? '#faq' : pageOf(item) === 'reservations' ? '#reservations' : '#chat'}
               className={isCurrent(item) ? 'current' : undefined}
               aria-current={isCurrent(item) ? 'page' : undefined}
               onClick={(event) => {
@@ -89,9 +105,13 @@ export default function App() {
       </header>
 
       <section className="hero">
-        <p className="kicker">{page === 'reservations' ? '서비스 예약' : '사성 CS Bot 시작'}</p>
+        {page === 'faq' ? null : (
+          <p className="kicker">{page === 'reservations' ? '서비스 예약' : '사성 CS Bot 시작'}</p>
+        )}
         <h1>
-          {page === 'reservations' ? (
+          {page === 'faq' ? (
+            <span id="faq-title">자주묻는질문(FAQ)</span>
+          ) : page === 'reservations' ? (
             <span>내 방문 예약</span>
           ) : (
             <>
@@ -110,7 +130,14 @@ export default function App() {
             onSeedConsumed={() => setSeedPrompt(null)}
           />
         </div>
-        {page === 'reservations' ? (
+        {page === 'faq' ? (
+          <FaqList
+            onAsk={(prompt) => {
+              setPage('chat')
+              setSeedPrompt(prompt)
+            }}
+          />
+        ) : page === 'reservations' ? (
           <ReservationList userId={user.id} userName={user.name} onStartChat={openChat} />
         ) : (
           <h2 className="features-title">사성 CS Bot으로 확인해 보세요</h2>
