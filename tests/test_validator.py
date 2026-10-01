@@ -44,3 +44,25 @@ def test_route_fail_after_max_retry_goes_fallback():
         'retry_count': 2,
         'current_worker': 'worker2',
     }) == 'fallback'
+
+
+def test_window_refusal_passes_without_llm():
+    result = validator({
+        'messages': [HumanMessage(content='교환을 진행하고 싶어')],
+        'draft_answer': '선택하신 제품(사성 탭 S10)은 수령 후 7일이 지나 교환 접수가 어렵습니다.\n\n[관련 규정 ART-08 / 근거 DOC-025]',
+        'tool_results': [{
+            'ok': True,
+            'decision': 'RETURN_WINDOW_EXPIRED',
+            'today': '2026-10-01',
+            'days_since_delivery': 9,
+            'return_window_days': 7,
+        }],
+        'current_worker': 'worker4',
+        'step': None,
+        'retry_count': 0,
+        'validation': None,
+        'user_id': 'U001',
+        'pending_data': {},
+    })
+
+    assert result['validation']['pass'] is True

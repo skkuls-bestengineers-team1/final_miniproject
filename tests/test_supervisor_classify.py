@@ -60,6 +60,8 @@ def test_classify_keyword_out_of_scope():
     assert classify_keyword('색상이 달라 교환하고 싶습니다') == 'worker4'
     assert classify_keyword('주문 내역 보여주세요') == 'worker3'
     assert classify_keyword('주문조회할래') == 'worker3'
+    assert classify_keyword('관련 규정이 어떻게 되는데?') == 'worker4'
+    assert classify_keyword('청약철회 기간이 어떻게 되나요?') == 'worker4'
 
 
 def test_expected_mapping_rules():
@@ -148,6 +150,7 @@ def test_continuation_keywords_skip_llm():
     assert looks_like_continuation('confirm_order', '이거 맞아')
     assert looks_like_continuation('select_method', '지점 방문')
     assert looks_like_continuation('select_method', '택배 수거')
+    assert looks_like_continuation('confirm_order', '관련 규정이 어떻게 되는데?')
     assert not looks_like_continuation('select_method', '가까운 매장 알려줘')
     assert parse_yes_no('이거 맞아') == 'yes'
     assert parse_yes_no('아니요') == 'no'

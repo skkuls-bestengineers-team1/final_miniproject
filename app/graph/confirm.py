@@ -121,6 +121,9 @@ def looks_like_continuation(
     if not step or not text:
         return False
 
+    if any(hint in text for hint in ('규정', '조항', '근거', '청약', '분쟁')):
+        return True
+
     if step in {'confirm_order', 'confirm_address'}:
         return _keyword_yes_no(_normalize(text)) in {'yes', 'no'}
 

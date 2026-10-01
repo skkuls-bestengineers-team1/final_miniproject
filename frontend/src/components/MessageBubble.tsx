@@ -28,7 +28,7 @@ export function MessageBubble({ message, onReserve }: MessageBubbleProps) {
   const stores = message.ui?.stores || []
   const products = message.ui?.products || []
   const orders = message.ui?.orders || []
-  const hideText = orders.length > 1
+  const hideText = orders.length > 1 && /주문 내역입니다|구매 내역입니다/.test(message.text)
 
   return (
     <div className="row bot">

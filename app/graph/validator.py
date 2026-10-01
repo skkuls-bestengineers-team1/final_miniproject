@@ -34,6 +34,8 @@ step={step}
 
 규칙:
 - Tool에 없는 숫자·지점·날짜·주소를 초안이 말하면 passed=false
+- Tool의 today, days_since_delivery, return_window_days, decision을 근거로 한 기간 거절은 통과
+- [관련 규정] 인용은 Tool dispute.items와 맞으면 통과
 - 질문에 답을 하지 않으면 passed=false
 - 승인 대기나 PENDING인데 완료·변경됐다고 하면 passed=false
 - 통과면 passed=true, reason은 한 줄
@@ -44,6 +46,31 @@ step={step}
 class ValidationVerdict(BaseModel):
     passed: bool = Field(description='사실 검사를 통과하면 true')
     reason: str = Field(description='실패면 워커가 고칠 지시. 통과면 짧게')
+
+
+def _supported_refusal(
+        state: State
+) -> bool:
+    draft = state.get('draft_answer') or ''
+
+    for item in state.get('tool_results') or []:
+        if not isinstance(item, dict):
+            continue
+
+        decision = item.get('decision')
+
+        if decision == 'RETURN_WINDOW_EXPIRED' and '7일이 지나' in draft:
+            return True
+
+        if decision == 'POLICY_CITATION' and '[관련 규정]' in draft:
+            return True
+
+        if decision == 'NOT_DELIVERED' and (
+            '수령 전' in draft or '수령 완료된 주문이 없어' in draft
+        ):
+            return True
+
+    return False
 
 
 def _payload(
@@ -68,6 +95,9 @@ def validator(
 
     if state.get('step'):
         return _payload(True, '추가 입력을 기다리는 안내')
+
+    if _supported_refusal(state):
+        return _payload(True, '거절 근거가 Tool과 일치')
 
     tools = state.get('tool_results') or []
     prompt = PROMPT.format(

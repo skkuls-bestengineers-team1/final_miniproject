@@ -4,6 +4,8 @@
 LLM은 app.llm.get_llm() (Gemini). ChatOpenAI 쓰지 않는다.
 '''
 
+import json
+import re
 from datetime import date, datetime
 from typing import Literal
 
@@ -22,13 +24,32 @@ from app.graph.state import State
 from app.llm import get_llm, llm_text
 from app.tools.dispute_tools import search_dispute_docs
 from app.tools.order_tools import get_orders
-from app.tools.request_tools import create_exchange_request, create_refund_request
+from app.tools.request_tools import (
+    RETURN_WINDOW_DAYS,
+    create_exchange_request,
+    create_refund_request,
+)
 from app.tools.store_tools import find_nearest_stores
 
 DISPUTE_HINTS = (
     '배송비', '철회', '청약', '규정', '분쟁',
     '색상', '하자', '변심', '누가 내', '비용 부담',
-    '교환', '환불' , '결함' ,
+    '교환', '환불', '결함', '조항', '근거',
+)
+POLICY_ONLY_HINTS = ('규정', '조항', '근거', '분쟁해결', '청약철회')
+REQUEST_HINTS = ('교환', '환불', '반품')
+SHIPPING_HINTS = ('배송비', '누가 내', '비용 부담', '반환 비용')
+ORDER_ID_RE = re.compile(r'ORD-\d+', re.I)
+ARTICLE_MARK = '[관련 규정'
+LOCKED_DRAFT = (
+    '아직 수령 전',
+    '수령 후 7일이 지나',
+    '수령 완료된 주문이 없어',
+    '아래 ',
+    '신청 정보가 맞습니까',
+    '지점 방문',
+    '택배 수거',
+    '방법을 선택',
 )
 
 
@@ -51,35 +72,55 @@ def _invoke_structured(
         return None
 
 
-def _rewrite_draft(
+def _split_article(
+        draft: str
+) -> tuple[str, str]:
+    text = draft or ''
+    index = text.find(ARTICLE_MARK)
+
+    if index < 0:
+        return text, ''
+
+    return text[:index].rstrip(), text[index:].strip()
+
+
+def _with_citation(
         draft: str,
-        reason: str
+        note: str
 ) -> str:
-    '''거절·확인 문장은 Tool 결과로 만든 고정 안내를 유지한다.'''
-
-    locked = (
-        '아직 수령 전',
-        '수령 후 7일이 지나',
-        '수령 완료된 주문이 없어',
-        '아래 ',
-        '신청 정보가 맞습니까',
-        '지점 방문',
-        '택배 수거',
-        '방법을 선택',
-    )
-
-    if any(marker in (draft or '') for marker in locked):
+    if not (note or '').strip() or ARTICLE_MARK in (draft or ''):
         return draft
 
+    return f'{draft}{note}'
+
+
+def _rewrite_draft(
+        draft: str,
+        reason: str,
+        tools: list | None = None
+) -> str:
+    '''거절·확인 문장과 규정 인용은 유지하고, 본문만 고친다.'''
+
+    if any(marker in (draft or '') for marker in LOCKED_DRAFT):
+        return draft
+
+    body, article = _split_article(draft)
     prompt = (
-        '교환/환불 상담 초안을 고친다. Tool 숫자·주문번호·주소·지점명은 바꾸지 마라.\n'
+        '교환/환불 상담 초안을 고친다. Tool의 decision·날짜·일수를 사실로 쓴다.\n'
+        '거절을 가능으로, 가능을 거절로 뒤집지 마라.\n'
+        '관련 규정 블록은 출력하지 마라. 본문만 고친다.\n'
         '취소·재주문·상담원 연결 같은 새 안내를 덧붙이지 마라.\n'
-        f'[검증 지시]\n{reason}\n\n[초안]\n{draft}\n\n고친 문장만 출력.'
+        f'[Tool]\n{json.dumps(tools or [], ensure_ascii=False, default=str)}\n'
+        f'[검증 지시]\n{reason}\n\n[초안]\n{body}\n\n고친 본문만 출력.'
     )
 
     try:
-        text = llm_text(get_llm().invoke(prompt))
-        return text or draft
+        text = llm_text(get_llm().invoke(prompt)) or body
+
+        if article:
+            return f'{text}\n\n{article}'
+
+        return text
 
     except Exception:
         return draft
@@ -146,39 +187,75 @@ def _within_return_window(
 
     delivered_on = datetime.strptime(delivered, '%Y-%m-%d').date()
 
-    return (date.today() - delivered_on).days <= 7
+    return (date.today() - delivered_on).days <= RETURN_WINDOW_DAYS
+
+
+def _name_in_text(
+        name: str,
+        text: str
+) -> bool:
+    if not name or not text:
+        return False
+
+    if name in text:
+        return True
+
+    stripped = name.replace('사성 ', '').strip()
+
+    return bool(stripped) and stripped in text
+
+
+def _match_named(
+        orders: list[dict],
+        text: str
+) -> dict | None:
+    '''발화에 주문번호나 제품명이 있으면 그 주문을 고른다. 기간과 무관하다.'''
+
+    if not text or not orders:
+        return None
+
+    found_ids = {match.group(0).upper() for match in ORDER_ID_RE.finditer(text)}
+    by_id = [
+        order for order in orders
+        if (order.get('order_id') or '').upper() in found_ids
+    ]
+
+    if len(by_id) == 1:
+        return by_id[0]
+
+    named = [
+        order for order in orders
+        if _name_in_text(order.get('product_name') or '', text)
+    ]
+
+    if len(named) == 1:
+        return named[0]
+
+    return None
 
 
 def _pick_order(
         orders: list[dict],
         text: str
 ) -> dict | None:
-    '''수령 완료 주문만 고른다. 여러 건이면 None을 돌려 질문을 유도한다.'''
+    '''지명한 주문을 우선한다. 없으면 기간 안 수령 주문이 하나일 때만 고른다.'''
+
+    named = _match_named(orders, text)
+
+    if named is not None:
+        print(f'[worker4] pick={named.get("order_id")} named=True')
+        return named
 
     delivered = _delivered_orders(orders)
     window = [order for order in delivered if _within_return_window(order)]
-    pool = window or delivered
     print(
         f'[worker4] delivered={[item.get("order_id") for item in delivered]} '
         f'window={[item.get("order_id") for item in window]}'
     )
 
-    if not pool:
-        return None
-
-    named = [
-        order for order in pool
-        if (order.get('product_name') or '') in text
-        or (order.get('option') or '') and (order.get('option') in text)
-    ]
-
-    if len(named) == 1:
-        print(f'[worker4] pick={named[0].get("order_id")} by_name=True')
-        return named[0]
-
-    if len(pool) == 1:
-        print(f'[worker4] pick={pool[0].get("order_id")} single=True')
-        return pool[0]
+    if len(window) == 1:
+        print(f'[worker4] pick={window[0].get("order_id")} single=True')
+        return window[0]
 
     print('[worker4] pick=None ask_select_order')
     return None
@@ -227,12 +304,10 @@ def _confirm_fields(
 ) -> dict[str, str]:
     fields = {
         '주문 날짜': format_korean_date(_iso_date(order.get('order_date'))),
+        '주문번호': order['order_id'],
         '제품명': order['product_name'],
         '옵션': order.get('option') or '-',
     }
-
-    if request_type != 'REFUND':
-        fields['주문번호'] = order['order_id']
 
     return fields
 
@@ -280,32 +355,196 @@ def _closing(
     return f'{body}\n불편을 드려 죄송합니다.'
 
 
-def _dispute_block(
-        text: str
-) -> tuple[str, dict | None]:
-    if not any(hint in text for hint in DISPUTE_HINTS):
-        return '', None
+def _window_facts(
+        order: dict | None,
+        decision: str | None = None
+) -> dict:
+    today = date.today().isoformat()
 
-    found = search_dispute_docs(text)
+    if not order:
+        return {
+            'ok': True,
+            'decision': decision or 'NOT_DELIVERED',
+            'today': today,
+            'delivered_date': None,
+            'days_since_delivery': None,
+            'return_window_days': RETURN_WINDOW_DAYS,
+        }
+
+    delivered = _iso_date(order.get('delivered_date'))
+    elapsed = None
+
+    if delivered:
+        elapsed = (date.today() - datetime.strptime(delivered, '%Y-%m-%d').date()).days
+
+    if decision is None:
+        if order.get('delivery_status') != 'DELIVERED' or elapsed is None:
+            decision = 'NOT_DELIVERED'
+        elif elapsed > RETURN_WINDOW_DAYS:
+            decision = 'RETURN_WINDOW_EXPIRED'
+        else:
+            decision = 'WITHIN_WINDOW'
+
+    return {
+        'ok': True,
+        'decision': decision,
+        'today': today,
+        'delivered_date': delivered or None,
+        'days_since_delivery': elapsed,
+        'return_window_days': RETURN_WINDOW_DAYS,
+        'order_id': order.get('order_id'),
+        'product_name': order.get('product_name'),
+    }
+
+
+def _policy_only(
+        text: str
+) -> bool:
+    return any(hint in text for hint in POLICY_ONLY_HINTS) and not any(
+        hint in text for hint in REQUEST_HINTS
+    )
+
+
+def _situation_from_tools(
+        results: list | None
+) -> str | None:
+    for item in results or []:
+        if isinstance(item, dict) and item.get('decision'):
+            return item['decision']
+
+    return None
+
+
+def _dispute_query(
+        text: str,
+        situation: str | None = None
+) -> str:
+    if situation == 'RETURN_WINDOW_EXPIRED' or situation == 'WITHIN_WINDOW':
+        return '청약철회 기간 배송 완료일로부터 7일'
+
+    if situation == 'NOT_DELIVERED':
+        return '재화 공급 시작 전 주문 취소'
+
+    if situation == 'SHIPPING_COST' or any(hint in (text or '') for hint in SHIPPING_HINTS):
+        return '반환 비용 부담 배송비'
+
+    if any(hint in (text or '') for hint in ('색상', '하자', '다르', '잘못')):
+        return '표시 광고와 다른 재화 청약철회'
+
+    if any(hint in (text or '') for hint in POLICY_ONLY_HINTS):
+        return '청약철회 기간 및 제한'
+
+    return (text or '').strip()
+
+
+def _prefer_dispute_item(
+        items: list,
+        situation: str | None
+) -> dict | None:
+    if not items:
+        return None
+
+    if situation in {'RETURN_WINDOW_EXPIRED', 'WITHIN_WINDOW'}:
+        for item in items:
+            blob = f"{item.get('doc_id')} {item.get('title')} {item.get('content')}"
+
+            if 'ART-08' in blob or '청약철회 기간' in blob:
+                return item
+
+    if situation == 'SHIPPING_COST':
+        for item in items:
+            blob = f"{item.get('doc_id')} {item.get('title')}"
+
+            if 'ART-09' in blob or '반환에 필요한 비용' in blob:
+                return item
+
+    return items[0]
+
+
+def _format_citation(
+        item: dict
+) -> str:
+    source_ids = item.get('doc_ids') or []
+    cited = source_ids[0] if source_ids else item.get('doc_id')
+
+    return (
+        f"\n\n[관련 규정 {item.get('doc_id')} / 근거 {cited}]\n"
+        f"{item.get('title') or ''}\n"
+        f"{item.get('content') or ''}"
+    )
+
+
+def _search_dispute(
+        query: str,
+        situation: str | None = None
+) -> tuple[str, dict | None]:
+    found = search_dispute_docs(query)
 
     if not found.get('ok'):
         return '', found
 
-    items = found.get('items') or []
+    top = _prefer_dispute_item(found.get('items') or [], situation)
 
-    if not items:
+    if not top:
         return '', found
 
-    top = items[0]
-    source_ids = top.get('doc_ids') or []
-    cited = source_ids[0] if source_ids else top.get('doc_id')
-    note = (
-        f"\n\n[관련 규정 {top.get('doc_id')} / 근거 {cited}]\n"
-        f"{top.get('title') or ''}\n"
-        f"{top.get('content') or ''}"
-    )
+    return _format_citation(top), found
 
-    return note, found
+
+def _cite_for(
+        text: str,
+        situation: str | None = None
+) -> tuple[str, dict | None]:
+    query = _dispute_query(text, situation)
+
+    if not query:
+        return '', None
+
+    if situation or any(hint in text for hint in DISPUTE_HINTS + POLICY_ONLY_HINTS):
+        return _search_dispute(query, situation)
+
+    return '', None
+
+
+def _finish_refuse(
+        state: State,
+        draft: str,
+        payload: dict,
+        text: str,
+        facts: dict
+) -> dict:
+    note, found = _cite_for(text, facts.get('decision'))
+    merged = {**payload, **facts}
+
+    if found is not None:
+        merged['dispute'] = found
+
+    return finished(state, 'worker4', _with_citation(draft, note), merged)
+
+
+def _is_policy_question(
+        text: str
+) -> bool:
+    return any(hint in (text or '') for hint in POLICY_ONLY_HINTS)
+
+
+def _policy_follow_prompt(
+        step: str | None,
+        label: str
+) -> str:
+    if step == 'select_method':
+        return f'{label} 방법을 선택해 주세요.\n- 지점 방문\n- 택배 수거'
+
+    if step == 'confirm_address':
+        return '주소가 맞으면 "네", 아니면 "아니요"라고 답해 주세요.'
+
+    if step == 'input_address':
+        return '수거할 주소를 입력해 주세요.'
+
+    if step == 'select_order':
+        return '목록의 번호로 주문을 선택해 주세요.'
+
+    return f'위 {label} 신청을 이어서 진행할까요? "네" 또는 "아니요"로 답해 주세요.'
 
 
 def _store_guide(
@@ -344,16 +583,34 @@ def worker4(
         retried['draft_answer'] = _rewrite_draft(
             state.get('draft_answer') or '',
             reason,
+            state.get('tool_results'),
         )
         return retried
 
     text = latest_user_text(state)
     pending = dict(state.get('pending_data') or {})
     step = state.get('step')
+
+    if _is_policy_question(text) and (step or _policy_only(text)):
+        situation = _situation_from_tools(
+            state.get('tool_results') or state.get('last_tool_results')
+        )
+        note, found = _cite_for(text, situation)
+        payload = dict(found or {'ok': False, 'message': '관련 규정을 찾지 못했습니다.'})
+        payload['decision'] = 'POLICY_CITATION'
+        extra = note or '\n관련 규정을 찾지 못했습니다.'
+        label = '환불' if (pending.get('request_type') or _request_type(text, pending)) == 'REFUND' else '교환'
+
+        if step:
+            draft = f'관련 규정은 아래와 같습니다.{extra}\n\n{_policy_follow_prompt(step, label)}'
+            return waiting(state, 'worker4', step, draft, pending, payload)
+
+        draft = f'관련 규정은 아래와 같습니다.{extra}' if note else '관련 규정을 찾지 못했습니다.'
+        return finished(state, 'worker4', draft, payload)
+
     request_type = _request_type(text, pending)
     label = '환불' if request_type == 'REFUND' else '교환'
     pending['request_type'] = request_type
-    _rag_note, dispute_result = _dispute_block(text)
 
     if step is None:
         listed = get_orders(state['user_id'])
@@ -361,9 +618,6 @@ def worker4(
         delivered = _delivered_orders(orders)
         window = [order for order in delivered if _within_return_window(order)]
         payload = listed
-
-        if dispute_result is not None:
-            payload = {**listed, 'dispute': dispute_result}
 
         print(
             f'[worker4] step=None delivered={[item.get("order_id") for item in delivered]} '
@@ -374,39 +628,73 @@ def worker4(
             return finished(state, 'worker4', '조회할 주문이 없습니다.', payload)
 
         if not delivered:
-            return finished(state, 'worker4', _refuse_not_received(label), payload)
+            return _finish_refuse(
+                state,
+                _refuse_not_received(label),
+                payload,
+                text,
+                _window_facts(None, 'NOT_DELIVERED'),
+            )
+
+        order = _pick_order(orders, text)
+
+        if order is not None:
+            if order.get('delivery_status') != 'DELIVERED' or not order.get('delivered_date'):
+                return _finish_refuse(
+                    state,
+                    _refuse_not_received(label, order),
+                    {**payload, 'orders': [order]},
+                    text,
+                    _window_facts(order, 'NOT_DELIVERED'),
+                )
+
+            if not _within_return_window(order):
+                return _finish_refuse(
+                    state,
+                    _refuse_window(label, order),
+                    {**payload, 'orders': [order]},
+                    text,
+                    _window_facts(order),
+                )
+
+            payload = {**payload, 'orders': [order]}
+            pending['order_id'] = order['order_id']
+            pending['shown_address'] = order['ship_address']
+            pending['order_summary'] = f"{order['product_name']} / {order.get('option') or '-'}"
+            pending['reason'] = text
+            draft = build_confirm_message(
+                f'아래 {label} 신청 정보가 맞습니까?',
+                _confirm_fields(order, request_type),
+            )
+            note, found = _cite_for(text, 'WITHIN_WINDOW')
+            draft = _with_citation(draft, note)
+
+            if found is not None:
+                payload = {**payload, 'dispute': found}
+
+            return waiting(state, 'worker4', 'confirm_order', draft, pending, payload)
 
         if not window:
             latest = delivered[0]
-            payload = {**payload, 'orders': [latest]}
-            return finished(state, 'worker4', _refuse_window(label, latest), payload)
-
-        order = _pick_order(window, text)
-
-        if order is None:
-            pending['order_options'] = window
-            pending['reason'] = text
-            listed_window = {**payload, 'orders': window}
-            return waiting(
+            return _finish_refuse(
                 state,
-                'worker4',
-                'select_order',
-                _order_choice_lines(window, label),
-                pending,
-                listed_window,
+                _refuse_window(label, latest),
+                {**payload, 'orders': [latest]},
+                text,
+                _window_facts(latest),
             )
 
-        payload = {**payload, 'orders': [order]}
-        pending['order_id'] = order['order_id']
-        pending['shown_address'] = order['ship_address']
-        pending['order_summary'] = f"{order['product_name']} / {order.get('option') or '-'}"
+        pending['order_options'] = window
         pending['reason'] = text
-        draft = build_confirm_message(
-            f'아래 {label} 신청 정보가 맞습니까?',
-            _confirm_fields(order, request_type),
+        listed_window = {**payload, 'orders': window}
+        return waiting(
+            state,
+            'worker4',
+            'select_order',
+            _order_choice_lines(window, label),
+            pending,
+            listed_window,
         )
-
-        return waiting(state, 'worker4', 'confirm_order', draft, pending, payload)
 
     if step == 'confirm_order':
         answer = parse_yes_no(text)
@@ -459,7 +747,11 @@ def worker4(
                 chosen = options[index]
 
         if chosen is None:
-            chosen = _pick_order(options, text) if options else None
+            chosen = _match_named(options, text)
+
+        if chosen is None:
+            listed = get_orders(state['user_id'])
+            chosen = _match_named(listed.get('orders') or [], text)
 
         if chosen is None:
             return waiting(
@@ -471,10 +763,24 @@ def worker4(
             )
 
         if not _within_return_window(chosen):
-            if chosen.get('delivery_status') != 'DELIVERED':
-                return finished(state, 'worker4', _refuse_not_received(label, chosen))
+            listed = {'ok': True, 'orders': [chosen]}
 
-            return finished(state, 'worker4', _refuse_window(label, chosen))
+            if chosen.get('delivery_status') != 'DELIVERED':
+                return _finish_refuse(
+                    state,
+                    _refuse_not_received(label, chosen),
+                    listed,
+                    text,
+                    _window_facts(chosen, 'NOT_DELIVERED'),
+                )
+
+            return _finish_refuse(
+                state,
+                _refuse_window(label, chosen),
+                listed,
+                text,
+                _window_facts(chosen),
+            )
 
         pending['order_id'] = chosen['order_id']
         pending['shown_address'] = chosen['ship_address']
@@ -482,8 +788,10 @@ def worker4(
             f'아래 {label} 신청 정보가 맞습니까?',
             _confirm_fields(chosen, request_type),
         )
+        note, found = _cite_for(pending.get('reason') or text, 'WITHIN_WINDOW')
+        draft = _with_citation(draft, note)
 
-        return waiting(state, 'worker4', 'confirm_order', draft, pending)
+        return waiting(state, 'worker4', 'confirm_order', draft, pending, found)
 
     if step == 'select_method':
         method = _parse_method(text)

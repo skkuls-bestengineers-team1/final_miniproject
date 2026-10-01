@@ -5,6 +5,9 @@
 
 from app.db.codes import CATEGORY_LABEL, DELIVERY_STATUS_LABEL
 from app.db.connection import fetch_all
+from app.graph.confirm import latest_user_text
+
+ORDER_LIST_HINTS = ('내역', '주문 조회', '주문조회', '구매 내역', '주문 목록')
 
 STORE_PHOTOS = {
     '강남역점': 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=900&q=80',
@@ -93,6 +96,14 @@ def _order_card(item: dict) -> dict | None:
     }
 
 
+def _wants_order_list(
+        values: dict | None
+) -> bool:
+    text = latest_user_text(values or {}) or ''
+
+    return any(hint in text for hint in ORDER_LIST_HINTS)
+
+
 def build_chat_ui(
         values: dict | None
 ) -> dict | None:
@@ -168,8 +179,20 @@ def build_chat_ui(
                 detail_orders[card['order_id']] = merged
 
     question_text = ' '.join(str(p.get('question', '')) for p in results if isinstance(p, dict))
-    filtered_orders = {order_id: card for order_id, card in list_orders.items() if order_id in question_text}
-    orders = detail_orders if detail_orders else (filtered_orders or list_orders)
+    filtered_orders = {
+        order_id: card
+        for order_id, card in list_orders.items()
+        if order_id in question_text
+    }
+
+    if detail_orders:
+        orders = detail_orders
+    elif filtered_orders:
+        orders = filtered_orders
+    elif list_orders and (not latest_user_text(values or {}) or _wants_order_list(values)):
+        orders = list_orders
+    else:
+        orders = {}
 
     if not stores and not products and not orders:
         return None
