@@ -33,7 +33,7 @@ PRODUCT_CODE_PHOTOS = {
     'PRD-6003': 'https://images.unsplash.com/photo-1518444065439-e933c06ce9cd?auto=format&fit=crop&w=900&q=80',
     'PRD-1001': 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=900&q=80',
     'PRD-1002': 'https://images.unsplash.com/photo-1590658268037-6bf12165a8df?auto=format&fit=crop&w=900&q=80',
-    'PRD-1003': 'https://images.unsplash.com/photo-1434493789847-2f02dc6ce31a?auto=format&fit=crop&w=900&q=80',
+    'PRD-1003': '/products/watch-ultra.png',
     'PRD-1004': 'https://images.unsplash.com/photo-1484704849700-f032a568e944?auto=format&fit=crop&w=900&q=80',
     'PRD-2001': 'https://images.unsplash.com/photo-1544244015-0df4b3ffc6b0?auto=format&fit=crop&w=900&q=80',
     'PRD-2002': 'https://images.unsplash.com/photo-1561154464-82e9adf32764?auto=format&fit=crop&w=900&q=80',
