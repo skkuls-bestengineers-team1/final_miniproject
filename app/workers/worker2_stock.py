@@ -197,15 +197,27 @@ def _extract(
 def _nearest_store(
         user_id: str,
         origin: dict
-) -> str | None:
-    '''검색 기준점에서 가장 가까운 지점명. 찾지 못하면 None.'''
+) -> dict | None:
+    '''검색 기준점에서 가장 가까운 지점 {store_name, distance_km}. 찾지 못하면 None.'''
 
     result = find_nearest_stores(user_id, top_k=1, origin=origin)
 
     if not result.get('ok') or not result.get('stores'):
         return None
 
-    return result['stores'][0]['store_name']
+    return result['stores'][0]
+
+
+def _plain_retry_draft(
+        state: State
+) -> str:
+    '''검증에 실패하면 기준 위치 문구를 빼고 재고 Tool 결과만으로 다시 쓴다.'''
+
+    for item in reversed(state.get('tool_results') or []):
+        if isinstance(item, dict) and 'items' in item:
+            return _format_stock(item)
+
+    return state.get('draft_answer') or ''
 
 
 def _format_stock(
@@ -246,7 +258,8 @@ def _answer(
         state: State,
         store_name: str,
         pending: dict,
-        origin: dict | None = None
+        origin: dict | None = None,
+        distance_km: float | None = None
 ) -> dict:
     '''지점이 정해졌으면 재고를 조회해 답한다. 기준점으로 고른 지점이면 기준도 밝힌다.'''
 
@@ -258,7 +271,18 @@ def _answer(
     draft = _format_stock(result)
 
     if origin and result.get('ok'):
-        draft = f"{origin['label']} 기준 가장 가까운 지점은 {result['store_name']}입니다.\n{draft}"
+        distance = f' (거리: 약 {float(distance_km):.1f}km)' if distance_km is not None else ''
+        draft = f"{origin['label']} 기준 가장 가까운 지점은 {result['store_name']}입니다.{distance}\n{draft}"
+        # 검증이 대조할 수 있도록 어느 기준으로 이 지점을 골랐는지 Tool 결과에 함께 남긴다.
+        result = {
+            **result,
+            'nearest_store': {
+                'basis': origin.get('source'),
+                'label': origin['label'],
+                'store_name': result['store_name'],
+                'distance_km': distance_km,
+            },
+        }
 
     update = finished(state, 'worker2', draft, result)
 
@@ -276,9 +300,9 @@ def _answer_nearest(
 ) -> dict:
     '''기준점에서 가장 가까운 지점의 재고로 답한다.'''
 
-    store_name = _nearest_store(state['user_id'], origin)
+    nearest = _nearest_store(state['user_id'], origin)
 
-    if not store_name:
+    if not nearest:
         update = _ask_store(
             state,
             pending,
@@ -287,7 +311,7 @@ def _answer_nearest(
         update['search_origin'] = origin
         return update
 
-    return _answer(state, store_name, pending, origin)
+    return _answer(state, nearest['store_name'], pending, origin, nearest.get('distance_km'))
 
 
 def _handle_origin_answer(
@@ -340,6 +364,8 @@ def worker2(
     retried = validation_retry_update(state, 'worker2')
 
     if retried:
+        # 검증 사유를 초안에 덧붙이지 않는다. Tool 결과로만 다시 쓴 답을 검증에 올린다.
+        retried['draft_answer'] = _plain_retry_draft(state)
         return retried
 
     pending = dict(state.get('pending_data') or {})
