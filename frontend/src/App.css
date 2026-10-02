@@ -35,14 +35,6 @@ select {
   padding-bottom: 88px;
 }
 
-.promo {
-  background: #f4f6fb;
-  color: #2a4bb3;
-  text-align: center;
-  font-size: 13px;
-  padding: 10px 16px;
-}
-
 .topbar {
   display: flex;
   align-items: center;
@@ -328,6 +320,7 @@ select {
 }
 
 .store-card div,
+.product-card div,
 .order-card div {
   display: flex;
   flex-direction: column;
@@ -362,6 +355,148 @@ select {
   margin-top: auto;
   font-size: 11px;
   padding: 4px 10px;
+}
+
+.product-card {
+  align-items: stretch;
+  grid-template-columns: 92px 1fr;
+}
+
+.product-card img {
+  height: 100%;
+  min-height: 108px;
+}
+
+.product-card .product-body {
+  padding: 12px 12px 10px 0;
+  gap: 2px;
+}
+
+.product-body strong {
+  font-size: 14px;
+  letter-spacing: -0.02em;
+  line-height: 1.35;
+}
+
+.product-card .product-meta {
+  margin: 0;
+  color: #8a93a3;
+  font-size: 11px;
+}
+
+.product-card .product-foot {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  margin-top: auto;
+  padding: 8px 0 0;
+  border-top: 1px solid #eef2f8;
+}
+
+.product-card .product-facts {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0;
+}
+
+.product-stock {
+  align-self: center;
+  border-radius: 999px;
+  padding: 3px 8px;
+  background: #f3f6fb;
+  color: #5c6b82;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+.product-price {
+  color: #111;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1;
+}
+
+.product-card .product-foot button {
+  width: 100%;
+  margin: 0;
+  align-self: stretch;
+  border: 0;
+  border-radius: 8px;
+  padding: 7px 10px;
+  background: #edf3ff;
+  color: #2457d6;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  white-space: nowrap;
+  text-align: center;
+}
+
+.product-modal-back {
+  z-index: 40;
+  padding: 24px;
+}
+
+.product-modal {
+  width: min(420px, 100%);
+  padding: 18px 18px 8px;
+}
+
+.product-modal header {
+  margin-bottom: 12px;
+}
+
+.product-modal h2 {
+  font-size: 20px;
+  letter-spacing: -0.03em;
+}
+
+.product-modal-photo {
+  display: block;
+  width: 100%;
+  height: 220px;
+  object-fit: contain;
+  background: #f6f8fb;
+  border-radius: 14px;
+}
+
+.product-modal-price {
+  margin: 14px 0 4px;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+}
+
+.product-specs {
+  margin: 8px 0 12px;
+}
+
+.product-specs div {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 0;
+  border-top: 1px solid #eef2f8;
+}
+
+.product-specs dt {
+  color: #8a93a3;
+  font-size: 13px;
+}
+
+.product-specs dd {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
 }
 
 .status-pill {
@@ -696,8 +831,8 @@ select {
 footer {
   text-align: center;
   color: #8a8a8a;
-  font-size: 12px;
-  padding: 24px;
+  font-size: 11px;
+  padding: 8px 16px 20px;
 }
 
 @media (max-width: 860px) {
