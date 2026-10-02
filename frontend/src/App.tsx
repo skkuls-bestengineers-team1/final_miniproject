@@ -63,9 +63,6 @@ export default function App() {
 
   return (
     <div className="shell">
-      <div className="promo">
-        공부용 상담 데모입니다. 기본 사용자는 {USERS[0].name}({USERS[0].id})입니다.
-      </div>
       <header className="topbar">
         <a
           className="logo"
@@ -178,9 +175,6 @@ export default function App() {
         <span>사성 CS Bot에게 궁금한 점을 물어보세요.</span>
       </button>
 
-      <footer>
-        사성전자 고객상담 멀티에이전트 데모 · 로그인 없이 user_id로 세션을 구분합니다.
-      </footer>
     </div>
   )
 }
