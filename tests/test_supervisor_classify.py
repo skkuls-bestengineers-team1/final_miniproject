@@ -131,6 +131,9 @@ def test_llm_classification():
     'text, expected',
     [
         ('가까운 매장 알려줘', 'worker1'),
+        ('로봇청소기를 사려고 합니다', 'worker1'),
+        ('로봇청소기를 구매하려고요', 'worker1'),
+        ('로봇청소기를 사려고 하는데 재고 있어요?', 'worker2'),
         ('강남역점에 로봇청소기 재고 있어?', 'worker2'),
         ('내 주문 배송 언제 와?', 'worker3'),
         ('구매한 제품 환불하고 싶어', 'worker4'),
