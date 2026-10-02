@@ -109,10 +109,25 @@ def _answer(
 
     user = get_user(state['user_id'])
     name = user.get('name') if user.get('ok') else '고객'
+
+    update = finished(state, 'worker1', _format_stores(result, origin['label'], name), result)
+    update['search_origin'] = origin
+
+    return update
+
+
+def _format_stores(
+        result: dict,
+        label: str,
+        name: str | None = None
+) -> str:
+    '''지점 검색 Tool 결과를 순위 안내 문장으로 만든다.'''
+
     stores = result['stores']
     first = stores[0]
+    greeting = f'{name} 님, ' if name else ''
     lines = [
-        f"{name} 님, {origin['label']} 기준 가장 가까운 지점은 {first['store_name']}입니다. "
+        f"{greeting}{label} 기준 가장 가까운 지점은 {first['store_name']}입니다. "
         f"(거리: 약 {float(first['distance_km']):.1f}km)"
     ]
 
@@ -122,10 +137,19 @@ def _answer(
 
     lines.append(RESERVATION_GUIDE)
 
-    update = finished(state, 'worker1', '\n'.join(lines), result)
-    update['search_origin'] = origin
+    return '\n'.join(lines)
 
-    return update
+
+def _plain_retry_draft(
+        state: State
+) -> str:
+    '''검증에 실패하면 Tool 결과에 없는 고객 이름을 빼고 지점 검색 결과만으로 다시 쓴다.'''
+
+    for item in reversed(state.get('tool_results') or []):
+        if isinstance(item, dict) and item.get('stores'):
+            return _format_stores(item, item.get('label') or '기준 위치')
+
+    return state.get('draft_answer') or ''
 
 
 def _handle_origin_answer(
@@ -178,6 +202,8 @@ def worker1(
     retried = validation_retry_update(state, 'worker1')
 
     if retried:
+        # 검증 사유를 초안에 덧붙이지 않는다. Tool 결과로만 다시 쓴 답을 검증에 올린다.
+        retried['draft_answer'] = _plain_retry_draft(state)
         return retried
 
     pending = dict(state.get('pending_data') or {})

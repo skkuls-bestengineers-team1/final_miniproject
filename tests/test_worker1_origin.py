@@ -211,3 +211,26 @@ def test_typed_current_while_asking_points_to_button(tools):
     # 주소로 보고 찾지 않으며, 실패 횟수도 세지 않는다.
     assert tools['typed'] == []
     assert 'origin_attempts' not in update['pending_data']
+
+
+def test_validation_retry_rewrites_from_tool_result(tools):
+    '''검증 실패 시 사유를 덧붙이지 않고, Tool 결과에 없는 고객 이름을 뺀 답으로 다시 쓴다.'''
+
+    current = search_origin.current_origin(37.49, 127.03)
+    first = w.worker1(_state('가까운 지점 알려줘', search_origin=current, search_origin_asked=True))
+    result = dict(first['tool_results'][-1], label='현재 위치')
+
+    retry = w.worker1(_state(
+        '가까운 지점 알려줘',
+        draft_answer=first['draft_answer'],
+        tool_results=[result],
+        validation={'pass': False, 'reason': 'Tool 결과에 없는 이름을 삭제하세요.'},
+        retry_count=0,
+    ))
+
+    lines = retry['draft_answer'].split('\n')
+    assert retry['retry_count'] == 1
+    assert lines[0] == '현재 위치 기준 가장 가까운 지점은 강남역점입니다. (거리: 약 0.4km)'
+    assert lines[-1] == w.RESERVATION_GUIDE
+    assert '박종석' not in retry['draft_answer']
+    assert '삭제하세요' not in retry['draft_answer']

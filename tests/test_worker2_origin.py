@@ -203,3 +203,48 @@ def test_registered_request_uses_registered(monkeypatch, tools):
     update = w.worker2(_state('등록 주소 기준 로봇청소기 재고', search_origin=current, search_origin_asked=True))
 
     assert update['draft_answer'].startswith('등록 주소 기준')
+
+
+def test_nearest_answer_keeps_origin_evidence_in_tool_result(monkeypatch, tools):
+    '''검증 에이전트가 "용산역 기준 가장 가까운 지점"을 대조할 수 있도록 근거가 Tool 결과에 남아야 한다.'''
+
+    _extract_returns(monkeypatch, category_code='ROBOT_CLEANER')
+    saved = dict(YONGSAN, at=_now())
+
+    update = w.worker2(_state('로봇청소기 재고 있어요?', search_origin=saved, search_origin_asked=True))
+
+    assert update['draft_answer'].startswith('용산역 기준 가장 가까운 지점은 용산점입니다. (거리: 약 1.0km)')
+    evidence = update['tool_results'][-1]['nearest_store']
+    assert evidence == {'basis': 'typed', 'label': '용산역', 'store_name': '용산점', 'distance_km': 1.0}
+    # 상품 카드가 읽는 재고 결과는 그대로다.
+    assert update['tool_results'][-1]['items']
+
+
+def test_store_given_has_no_origin_evidence(monkeypatch, tools):
+    _extract_returns(monkeypatch, store_name='강남역점', category_code='ROBOT_CLEANER')
+
+    update = w.worker2(_state('강남역 로봇청소기 재고'))
+
+    assert 'nearest_store' not in update['tool_results'][-1]
+
+
+def test_validation_retry_rewrites_from_tool_result(monkeypatch, tools):
+    '''검증 실패 시 사유를 덧붙이지 않고, 기준 문구를 뺀 재고 답으로 다시 쓴다.'''
+
+    _extract_returns(monkeypatch, category_code='ROBOT_CLEANER')
+    saved = dict(YONGSAN, at=_now())
+    first = w.worker2(_state('로봇청소기 재고 있어요?', search_origin=saved, search_origin_asked=True))
+
+    retry = w.worker2(_state(
+        '로봇청소기 재고 있어요?',
+        draft_answer=first['draft_answer'],
+        tool_results=first['tool_results'],
+        validation={'pass': False, 'reason': "Tool 결과에 없는 '용산역' 언급을 삭제하세요."},
+        retry_count=0,
+    ))
+
+    assert retry['retry_count'] == 1
+    assert retry['validation'] is None
+    assert retry['draft_answer'].startswith('용산점 재고입니다.')
+    assert '기준 가장 가까운' not in retry['draft_answer']
+    assert '삭제하세요' not in retry['draft_answer']
