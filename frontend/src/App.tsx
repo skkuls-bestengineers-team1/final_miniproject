@@ -175,6 +175,7 @@ export default function App() {
         <span>사성 CS Bot에게 궁금한 점을 물어보세요.</span>
       </button>
 
+      <footer>사성전자 고객상담 멀티에이전트 데모</footer>
     </div>
   )
 }
